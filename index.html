@@ -8,12 +8,12 @@
   Purpose
     Mickael Cauberghs, 2026-11-07: I built this tool because the ADP timecard
     rounds every punch to the nearest quarter hour (7-minute rule). In my first
-    week at IPG Photonics (Nov 2-6, 2026) the rounding cost me about 30 minutes
-    of real work that was not on my timecard. This page tells me the best time
+    week at my new job the rounding cost me about 30 minutes of real work that
+    was not on my timecard. This page tells me the best time
     to punch in and out so that I work a real 8:00 per day, take a real
     30-minute lunch, and the timecard never rounds against me.
 
-  Rounding rule used (confirmed with my own ADP punches, week of 2026-11-02)
+  Rounding rule used (confirmed with my own ADP punches, first work week)
     0-7 minutes after a quarter hour  -> rounds back    (8:37 -> 8:30)
     8-14 minutes after a quarter hour -> rounds forward (8:38 -> 8:45)
 
@@ -189,7 +189,6 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         <button class="btn solid" id="addDayBtn">+ Add or fix a day</button>
         <button class="btn" id="copyBtn">Copy as table (for Excel)</button>
-        <button class="btn hidden" id="seedBtn">Add my first week (Nov 2–6)</button>
       </div>
       <div id="copyBox"></div>
     </div>
@@ -250,7 +249,7 @@ const toHHMM = m => pad(Math.floor(m/60)) + ":" + pad(m%60);
 /**
  * Round a punch the way the ADP timecard does (nearest quarter hour).
  * Mickael Cauberghs, 2026-11-07: rule checked against all 20 of my punches
- * from Nov 2-6, 2026 (for example 1:37 PM -> 1:30 PM, 8:40 AM -> 8:45 AM).
+ * from my first work week (for example 1:37 PM -> 1:30 PM, 8:40 AM -> 8:45 AM).
  * @param {number} m minutes since midnight
  * @returns {number} rounded minutes since midnight
  */
@@ -428,7 +427,7 @@ function renderAdvice(){
         <div class="sub">If you punch now, it counts as <b>${fmtClock(q)}</b> anyway — you would work <b>${q-now} min</b> for free.
         Wait <span class="countdown">${q-now} min</span>, then punch.</div>`;
     }
-    html += `<div class="note" style="margin-top:8px">Follow your shift rules: only punch early if IPG allows it.</div>`;
+    html += `<div class="note" style="margin-top:8px">Follow your shift rules: only punch early if your company allows it.</div>`;
   }
   else if(nf === "out1"){
     const worked = now - a;
@@ -497,7 +496,7 @@ function renderAdvice(){
       html = `<div class="label">Overtime today</div><div class="big">Punch OUT now</div>
         <div class="sub">Now counts as <b>${fmtClock(rnd(now))}</b>. Real work: <b>${fmtDur(realNow)}</b> · Card: <b>${fmtHrs(cardNow)}</b>.</div>`;
     }
-    // Mickael Cauberghs, 2026-11-07: on Fri Nov 6 I reached 40.50 card hours
+    // Mickael Cauberghs, 2026-11-07: in my first week I went over 40 card hours
     // without noticing. This warning shows the window to stay at exactly 40.00.
     const other = weekOtherCard(rec.date);
     const weekAt = other + cardAt;
@@ -630,7 +629,6 @@ function renderHistory(){
   document.getElementById("histTable").innerHTML = head + "<tbody>" + (body || `<tr><td colspan="9" style="text-align:center;color:var(--muted);cursor:default">No days in this period.</td></tr>`) + "</tbody>" + foot;
   document.getElementById("rangeStats").innerHTML = stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
   document.querySelectorAll("#histTable tbody tr[data-k]").forEach(tr => tr.addEventListener("click", () => openEditor(tr.dataset.k)));
-  document.getElementById("seedBtn").classList.toggle("hidden", Object.keys(days).some(k => k <= "2026-11-06"));
 }
 
 function openEditor(k){
@@ -706,21 +704,6 @@ function copyTable(){
   }catch(e){ fallback(); }
 }
 
-/**
- * Mickael Cauberghs, 2026-11-07: one-time button to add my first week at IPG
- * (Nov 2-6, 2026), copied from my ADP timecard, so my history starts on day 1.
- */
-function seedFirstWeek(){
-  const seed = [
-    ["2026-11-02","08:51","12:47","13:18","17:43"],
-    ["2026-11-03","08:31","12:23","12:55","17:18"],
-    ["2026-11-04","08:40","12:33","13:10","17:18"],
-    ["2026-11-05","07:39","11:45","12:13","16:20"],
-    ["2026-11-06","08:40","13:05","13:37","17:13"]
-  ];
-  for(const s of seed){ if(!days[s[0]]) setDay({date:s[0], in1:s[1], out1:s[2], in2:s[3], out2:s[4], note:"From ADP timecard"}); }
-}
-
 // ---------------------------------------------------------------------------
 // Start-up and event wiring
 // ---------------------------------------------------------------------------
@@ -743,7 +726,6 @@ document.getElementById("mainBtn").onclick = punchNow;
 document.getElementById("undoBtn").onclick = undo;
 document.getElementById("addDayBtn").onclick = () => openEditor(null);
 document.getElementById("copyBtn").onclick = copyTable;
-document.getElementById("seedBtn").onclick = seedFirstWeek;
 document.getElementById("backupBtn").onclick = saveBackup;
 document.getElementById("restoreInput").addEventListener("change", ev => {
   const f = ev.target.files && ev.target.files[0];
