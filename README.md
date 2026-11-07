@@ -1,6 +1,6 @@
 # Punch Planner
 
-**Version 1.2.0 (2026-11-07)** · Author: Mickael Cauberghs
+**Version 1.3.0 (2026-11-07)** · Author: Mickael Cauberghs
 
 A small Android app (installable web app) that tells me the best time to punch
 in and out on the ADP timecard, so I work a real 8:00 per day, take a real
@@ -22,7 +22,10 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 - Warning above 40 card hours per week
 - History with search by day, week, month or custom dates
 - Edit a day, add notes, copy a period for Excel
-- Works offline; data saved on the phone; share/save/restore a backup file
+- Check vs ADP: type ADP's daily total, see ✓ or ✗ per day
+- Lunch alarms: gentle chime with snooze 5/10/15/20 min (new best time shown), urgent red alarm at 55 min, stop for the day
+- (i) buttons show details only when needed
+- Works offline; data saved on the phone; share/save/restore a backup file, daily backup reminder
 
 ## Install on Android (Samsung Galaxy S10e)
 
@@ -38,6 +41,7 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 | `manifest.webmanifest`  | App name, icons, standalone mode         |
 | `sw.js`                 | Service worker: offline copy of the app  |
 | `icon-*.png`            | App icons                                |
+| `tools/make_logo.py`    | Draws the app icons (Python + Pillow)    |
 
 ## Change log
 
@@ -46,3 +50,4 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 | 1.0.0   | 2026-11-07 | Mickael Cauberghs  | First version: planner, totals, 40-hour warning, history, editor, Excel copy |
 | 1.1.0   | 2026-11-07 | Mickael Cauberghs  | Standalone Android app on GitHub Pages: offline, phone storage, backup save/restore, laser time-card logo |
 | 1.2.0   | 2026-11-07 | Mickael Cauberghs  | Share backup button (email, Google Drive) to move my real times to the laptop |
+| 1.3.0   | 2026-11-07 | Mickael Cauberghs  | Check vs ADP (reconciliation), lunch alarms (gentle + snooze, urgent red, stop for today), (i) info buttons, daily backup reminder, remove one punch, bigger logo |

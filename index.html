@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.2.0 (2026-11-07)
+  Version : 1.3.0 (2026-11-07)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -30,6 +30,15 @@
                        punches from the phone by email or Google Drive, so I
                        can open them on my laptop and improve the app without
                        losing my real times.
+    1.3.0  2026-11-07  Mickael Cauberghs  "Check vs ADP" reconciliation mode
+                       (type ADP's daily total, see ✓ or ✗ per day); (i) info
+                       buttons to hide details; daily backup reminder with
+                       one-tap "Send backup"; ✕ to remove one punch; edit or
+                       delete any day (test/demo days); bigger logo.
+                       Lunch alarms: a gentle chime before the best time to
+                       punch back in (snooze 5/10/15/20 min with a new best
+                       time), an urgent red alarm at 55 min of real lunch,
+                       and "No more alarms today".
   ============================================================================
 -->
 <html lang="en">
@@ -78,7 +87,16 @@
   .primary{display:block;width:100%;padding:20px;font-size:21px;font-weight:800;border:0;border-radius:14px;background:var(--blue);color:var(--blue-ink);cursor:pointer;margin:12px 0 6px}
   .primary:active{transform:scale(.99)}
   .linkbtn{background:none;border:0;color:var(--blue);font-size:15px;cursor:pointer;padding:6px 0;text-decoration:underline}
-  .steps{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center}
+  .steps{display:grid;grid-template-columns:1fr auto auto;gap:8px 6px;align-items:center}
+  .info{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);font:italic 700 13px/20px Georgia,serif;cursor:pointer;padding:0;margin-left:6px;vertical-align:middle;text-transform:none;letter-spacing:0}
+  .infobox{background:var(--bg);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:400}
+  .infobox ul{margin:4px 0;padding-left:18px}
+  .clr{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:6px 8px}
+  .banner{background:var(--amber-bg);border-radius:12px;padding:12px;margin:12px 0;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .ok{color:var(--green);font-weight:700} .bad{color:var(--red);font-weight:700}
+  input.adp{width:64px;font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);text-align:right}
+  .h2row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .toggle{font-size:14px}
   .steps .name{font-weight:600}
   .steps .name small{display:block;font-weight:400;color:var(--muted)}
   input[type=time],input[type=date],input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
@@ -116,6 +134,22 @@
   textarea{width:100%;height:140px;font:13px monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px}
   .hidden{display:none}
   .version{font-size:13px;font-weight:500;color:var(--muted)}
+  /* Lunch alarm screen (v1.3.0) */
+  .alarm-bg{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+  .alarm{width:100%;max-width:440px;border-radius:18px;padding:20px;background:var(--green-bg);color:var(--ink)}
+  .alarm.urgent{background:#c0261a;color:#fff;animation:pulse 1s infinite alternate}
+  @keyframes pulse{from{box-shadow:0 0 0 0 rgba(255,60,40,.7)}to{box-shadow:0 0 0 18px rgba(255,60,40,0)}}
+  .alarm h3{font-size:26px;margin:0 0 6px}
+  .alarm .when{font-size:30px;font-weight:800;margin:8px 0}
+  .alarm .primary{margin:14px 0 10px}
+  .alarm.urgent .primary{background:#fff;color:#c0261a}
+  .snooze{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .snooze button{padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:15px;cursor:pointer}
+  .snooze small{display:block;color:var(--muted);font-size:12px}
+  .alarm .stops{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:8px}
+  .alarm .stops button{flex:1;padding:10px;border-radius:12px;border:1px solid currentColor;background:transparent;color:inherit;font-size:15px;cursor:pointer}
+  .alarmline{margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.08);font-size:15px}
+  .alarmline label{display:block;margin-top:6px;font-size:14px}
 </style>
 </head>
 <body>
@@ -130,23 +164,38 @@
   </div>
 
   <div id="errBox"></div>
+  <div id="backupBanner"></div>
 
   <section id="viewToday">
     <div id="advice"></div>
     <button id="mainBtn" class="primary"></button>
-    <div style="display:flex;justify-content:space-between">
+    <div style="display:flex;justify-content:space-between;align-items:center">
       <button id="undoBtn" class="linkbtn">Undo last punch</button>
-      <span class="note" id="tapNote">Tap right after you punch on the clock.</span>
+      <span class="note">Tap right after you punch.</span>
     </div>
 
     <div class="card">
-      <h2>Today's punches</h2>
+      <h2>Today's punches <button class="info" data-info="iPunches" aria-label="More info">i</button></h2>
+      <div id="iPunches" class="infobox hidden">
+        If you forgot to tap, type the real punch time. Tap <b>✕</b> to remove one punch.
+        To change another day, use <b>History → Add or edit any day</b>.
+      </div>
       <div class="steps" id="steps"></div>
-      <p class="note" style="margin:10px 0 0">If you forgot to tap, type the real punch time here.</p>
     </div>
 
     <div class="card">
-      <h2>Today</h2>
+      <h2>Today <button class="info" data-info="iRound" aria-label="How the timecard rounds">i</button></h2>
+      <div id="iRound" class="infobox hidden">
+        <b>How the timecard rounds:</b> every punch moves to the nearest quarter hour (:00, :15, :30, :45).
+        <ul>
+          <li>0–7 min after → rounds <b>back</b> (8:37 counts as 8:30)</li>
+          <li>8–14 min after → rounds <b>forward</b> (8:38 counts as 8:45)</li>
+        </ul>
+        <b>Punch IN</b> in the first 7 minutes after a quarter hour. <b>Punch OUT</b> 8–14 minutes after.
+        A real 30-minute lunch never loses you time.<br>
+        <b>Real</b> = the time you really worked. <b>Card</b> = what the timecard counts.<br>
+        Daily goal: 8:00 real work and 8.00 card hours. Only punch early if your company allows it.
+      </div>
       <div class="stats" id="todayStats"></div>
     </div>
 
@@ -154,17 +203,6 @@
       <h2>This week (Mon–Sun)</h2>
       <div class="stats" id="weekStats"></div>
       <div id="weekWarn"></div>
-    </div>
-
-    <div class="card">
-      <h2>How the timecard rounds</h2>
-      <p style="margin:0 0 6px">Every punch moves to the nearest quarter hour (:00, :15, :30, :45):</p>
-      <ul style="margin:0;padding-left:20px">
-        <li>0–7 min after → rounds <b>back</b> (8:37 counts as 8:30)</li>
-        <li>8–14 min after → rounds <b>forward</b> (8:38 counts as 8:45)</li>
-      </ul>
-      <p style="margin:8px 0 0">So: <b>punch IN</b> in the first 7 minutes after a quarter hour, and <b>punch OUT</b> in the minutes 8–14 after. A real 30-minute lunch never loses you time.</p>
-      <p class="note" style="margin:8px 0 0">Daily goal: 8:00 real work and 8.00 on the card. Lunch: at least 30 real minutes.</p>
     </div>
   </section>
 
@@ -186,22 +224,46 @@
     </div>
 
     <div class="card">
-      <h2 id="histTitle">Days</h2>
-      <div class="stats" id="rangeStats"></div>
+      <div class="h2row">
+        <h2 id="histTitle" style="margin:0">Days</h2>
+        <label class="toggle"><input type="checkbox" id="reconToggle"> Check vs ADP</label>
+      </div>
+      <div id="reconHelp" class="hidden">
+        <p class="note" style="margin:8px 0 0">Type ADP's <b>Daily Total</b> for each day <button class="info" data-info="iRecon" aria-label="How to reconcile">i</button></p>
+        <div id="iRecon" class="infobox hidden">
+          Open <b>ADP → Myself → My Timecard</b>. For each day, type the <b>Daily Totals</b> number into the ADP column.
+          <ul>
+            <li><span class="ok">✓</span> ADP matches the card hours the app calculated.</li>
+            <li><span class="bad">✗</span> Different: a punch in ADP is missing or not the same time. Tap the day to compare the punches.</li>
+          </ul>
+          Add a note on the day (for example "asked HR to fix") so you keep a record.
+        </div>
+      </div>
+      <div class="stats" id="rangeStats" style="margin-top:10px"></div>
       <div class="tablewrap"><table id="histTable"></table></div>
-      <p class="note">Tap a day to correct it or add a note. Real = your real time. Card = what the timecard counts.</p>
+      <p class="note">Tap a day to edit, add a note, or delete it. <button class="info" data-info="iHist" aria-label="More info">i</button></p>
+      <div id="iHist" class="infobox hidden">
+        <b>Real</b> = your real time. <b>Card</b> = what the timecard counts. 📝 = the day has a note.
+        Use <b>Delete day</b> to remove a test or demo day, or ✕ next to one punch to remove only that punch.
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn solid" id="addDayBtn">+ Add or fix a day</button>
+        <button class="btn solid" id="addDayBtn">+ Add or edit any day</button>
         <button class="btn" id="copyBtn">Copy as table (for Excel)</button>
       </div>
       <div id="copyBox"></div>
     </div>
 
     <div class="card">
-      <h2>Backup</h2>
-      <p style="margin:0 0 8px">Your punches are saved on this phone only. Share a backup once a week (email it to yourself or save it to Google Drive). Updating the app never deletes your punches.</p>
+      <h2>Backup <button class="info" data-info="iBackup" aria-label="About backups">i</button></h2>
+      <div id="iBackup" class="infobox hidden">
+        Your punches are saved on this phone only. Updating the app never deletes them; uninstalling the app or clearing Chrome data does.
+        <b>Send backup</b> opens the Android share menu: pick your email app and send it to yourself.
+        The file always contains <b>all</b> your days, so the newest backup is all you need.
+        The app reminds you every day when there are changes not backed up yet.
+      </div>
+      <p class="note" id="lastBackup" style="margin:0 0 8px"></p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn solid" id="shareBtn">Share backup (email, Drive…)</button>
+        <button class="btn solid" id="shareBtn">Send backup (email, Drive…)</button>
         <button class="btn" id="backupBtn">Save backup file</button>
         <label class="btn" for="restoreInput" style="cursor:pointer">Restore from backup</label>
         <input type="file" id="restoreInput" accept=".json,application/json" class="hidden">
@@ -214,11 +276,12 @@
 </div>
 
 <div id="modalHost"></div>
+<div id="alarmHost"></div>
 
 <script>
 /*
  * Punch Planner - application script
- * Version 1.2.0 (2026-11-07) - Mickael Cauberghs
+ * Version 1.3.0 (2026-11-07) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -235,12 +298,18 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const APP_DATE = "2026-11-07";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
 const WEEK_LIMIT = 2400;  // 40:00 card hours per week, in minutes
 const LS_KEY = "punchPlanner.days.v1";
+const META_KEY = "punchPlanner.meta.v1";   // { lastBackupAt, lastChangeAt } in ms
+const BACKUP_NAG_MS = 24 * 60 * 60 * 1000;   // remind once a day
+const ALARM_KEY = "punchPlanner.alarm.v1"; // today's alarm state (not in backups)
+const GENTLE_LEAD = 3;    // gentle alarm: minutes before the best punch-in time
+const URGENT_AT = 55;     // urgent alarm: minutes of real lunch
+const SNOOZES = [5, 10, 15, 20];
 const FIELDS = ["in1", "out1", "in2", "out2"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -268,6 +337,8 @@ function keyOf(d){ return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pa
 function dateOf(k){ const [y,m,d] = k.split("-").map(Number); return new Date(y, m-1, d); }
 function addDays(k,n){ const d = dateOf(k); d.setDate(d.getDate()+n); return keyOf(d); }
 function mondayOf(k){ const d = dateOf(k); const off = (d.getDay()+6)%7; d.setDate(d.getDate()-off); return keyOf(d); }
+/** Short date for narrow tables: "Mon 11/02". */
+function shortDate(k){ const d = dateOf(k); return DOW[d.getDay()] + " " + pad(d.getMonth()+1) + "/" + pad(d.getDate()); }
 function prettyDate(k){ const d = dateOf(k); return DOW[d.getDay()] + " " + pad(d.getMonth()+1) + "/" + pad(d.getDate()) + "/" + d.getFullYear(); }
 function nowMin(){ const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
 function todayKey(){ return keyOf(new Date()); }
@@ -301,6 +372,7 @@ function orderProblem(rec){
 // one phone only, I added a backup file (save / restore) in the History tab.
 // ---------------------------------------------------------------------------
 let days = {};  // date key -> day record
+let meta = { lastBackupAt: 0, lastChangeAt: 0 };
 
 function loadLocal(){
   try{
@@ -324,17 +396,57 @@ function showErr(msg){
   document.getElementById("errBox").innerHTML = msg ? '<div class="err">' + esc(msg) + '</div>' : "";
 }
 
-function setDay(rec){ days[rec.date] = rec; saveLocal(); renderAll(); }
-function removeDay(k){ delete days[k]; saveLocal(); renderAll(); }
+function loadMeta(){
+  try{ return Object.assign({ lastBackupAt: 0, lastChangeAt: 0 }, JSON.parse(localStorage.getItem(META_KEY) || "{}")); }
+  catch(e){ return { lastBackupAt: 0, lastChangeAt: 0 }; }
+}
+function saveMeta(){ try{ localStorage.setItem(META_KEY, JSON.stringify(meta)); }catch(e){} }
+
+/**
+ * Mickael Cauberghs, 2026-11-07 (v1.3.0): every change stamps the day with
+ * "updated" so the app knows which days are not in a backup yet.
+ */
+function markChanged(){ meta.lastChangeAt = Date.now(); saveMeta(); }
+function markBackedUp(){ meta.lastBackupAt = Date.now(); saveMeta(); renderBackupStatus(); }
+
+function setDay(rec){ rec.updated = Date.now(); days[rec.date] = rec; markChanged(); saveLocal(); renderAll(); }
+function removeDay(k){ delete days[k]; markChanged(); saveLocal(); renderAll(); }
+
+/** Number of days changed since the last backup (deletions count as 1). */
+function unsavedCount(){
+  const n = Object.values(days).filter(r => (r.updated || 0) > meta.lastBackupAt).length;
+  return n || (meta.lastChangeAt > meta.lastBackupAt ? 1 : 0);
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-07 (v1.3.0): daily backup reminder. A phone web
+ * app cannot send email by itself (no mail server), so the app shows a banner
+ * once a day (and when my day is complete) with a one-tap "Send backup".
+ */
+function renderBackupStatus(){
+  const n = unsavedCount();
+  const last = meta.lastBackupAt ? new Date(meta.lastBackupAt) : null;
+  const lb = document.getElementById("lastBackup");
+  if(lb) lb.textContent = (last ? "Last backup: " + prettyDate(keyOf(last)) + " " + fmtClock(last.getHours()*60 + last.getMinutes()) : "No backup yet.")
+    + (n ? " · " + n + " day" + (n > 1 ? "s" : "") + " not backed up." : " · Everything is backed up.");
+  const dayDone = !!(days[todayKey()] && days[todayKey()].out2);
+  const due = n > 0 && (Date.now() - meta.lastBackupAt >= BACKUP_NAG_MS || dayDone);
+  document.getElementById("backupBanner").innerHTML = due
+    ? `<div class="banner"><span><b>${n} day${n > 1 ? "s" : ""} not backed up.</b> Send a copy to your email.</span>
+       <button class="btn solid" id="bannerShare">Send backup</button></div>` : "";
+  const b = document.getElementById("bannerShare");
+  if(b) b.onclick = shareBackup;
+}
 
 async function initStore(){
   days = loadLocal();
+  meta = loadMeta();
   let persistent = false;
   try{
     if(navigator.storage && navigator.storage.persist) persistent = await navigator.storage.persist();
   }catch(e){ persistent = false; }
   document.getElementById("status").textContent =
-    "Saved on this phone" + (persistent ? " (protected storage)" : "") + ". Save a backup file once a week.";
+    "Saved on this phone" + (persistent ? " (protected storage)" : "") + ".";
   renderAll();
 }
 
@@ -360,6 +472,7 @@ function saveBackup(){
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  markBackedUp();
   document.getElementById("backupMsg").textContent =
     "Saved to Downloads: " + file.name + " (" + Object.keys(days).length + " days).";
 }
@@ -376,7 +489,8 @@ async function shareBackup(){
   if(navigator.canShare && navigator.canShare({ files: [file] })){
     try{
       await navigator.share({ files: [file], title: file.name, text: "Punch Planner backup (" + Object.keys(days).length + " days)" });
-      msg.textContent = "Shared: " + file.name;
+      markBackedUp();
+      msg.textContent = "Sent: " + file.name;
     }catch(e){
       if(e && e.name !== "AbortError") msg.textContent = "Sharing did not work. Use Save backup file instead.";
     }
@@ -460,7 +574,6 @@ function renderAdvice(){
         <div class="sub">If you punch now, it counts as <b>${fmtClock(q)}</b> anyway — you would work <b>${q-now} min</b> for free.
         Wait <span class="countdown">${q-now} min</span>, then punch.</div>`;
     }
-    html += `<div class="note" style="margin-top:8px">Follow your shift rules: only punch early if your company allows it.</div>`;
   }
   else if(nf === "out1"){
     const worked = now - a;
@@ -480,9 +593,8 @@ function renderAdvice(){
   }
   else if(nf === "in2"){
     const earliest = b + LUNCH;
-    const er = ((earliest%15)+15)%15;
-    let bestS, bestE;
-    if(er <= 7){ bestS = earliest; bestE = earliest - er + 7; } else { bestS = earliest + (15-er); bestE = bestS + 7; }
+    const plan = bestReturn(b);
+    const bestS = plan.start, bestE = plan.end;
     const onLunch = now - b;
     if(now < earliest){
       cls = "wait";
@@ -500,10 +612,12 @@ function renderAdvice(){
           <div class="sub">Now counts as <b>${fmtClock(now - r)}</b>. Lunch so far: ${onLunch} min.</div>`;
       } else {
         const q = now + (15 - r);
-        html = `<div class="label">Back from lunch</div><div class="big">Punch IN now or at ${fmtClock(q)}</div>
+        html = `<div class="label">Back from lunch</div><div class="big">${onLunch >= URGENT_AT ? "Punch IN now" : "Punch IN now or at " + fmtClock(q)}</div>
           <div class="sub">Now counts as <b>${fmtClock(q)}</b>. Your 30 min are done (lunch so far: ${onLunch} min). Every minute you work before ${fmtClock(q)} is not on the card.</div>`;
       }
     }
+    if(onLunch >= URGENT_AT - 10) cls = "wait";
+    html += alarmLineHtml(b);
   }
   else if(nf === "out2"){
     // best = later of: (a) real work reaches 8:00, (b) first minute whose
@@ -562,7 +676,8 @@ function renderSteps(){
     const v = rec[f];
     const card = v ? ` <small>card: ${fmtClock(rnd(toMin(v)))}</small>` : "";
     h += `<div class="name">${names[f][0]} <span style="font-weight:400;color:var(--muted)">(${names[f][1]})</span>${card}</div>
-      <input type="time" data-f="${f}" value="${esc(v)}">`;
+      <input type="time" data-f="${f}" value="${esc(v)}">
+      <button class="clr" data-clr="${f}" aria-label="Remove this punch" style="visibility:${v ? "visible" : "hidden"}">✕</button>`;
   }
   const s = document.getElementById("steps");
   s.innerHTML = h;
@@ -572,6 +687,13 @@ function renderSteps(){
       const r2 = todayRec();
       r2[inp.dataset.f] = inp.value || "";
       setDay(r2);
+    });
+  });
+  s.querySelectorAll("button[data-clr]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const r2 = todayRec();
+      r2[btn.dataset.clr] = "";
+      if(FIELDS.every(f => !r2[f]) && !r2.note) removeDay(r2.date); else setDay(r2);
     });
   });
 }
@@ -612,6 +734,248 @@ function undo(){
 }
 
 // ---------------------------------------------------------------------------
+// Lunch alarms
+// Mickael Cauberghs, 2026-11-07 (v1.3.0): I want to be reminded when my lunch
+// is ending, so I punch back in at the best time and never take a too-long
+// lunch by mistake:
+//   - GENTLE alarm (soft chime): GENTLE_LEAD minutes before the best time to
+//     punch back in. I can snooze it 5, 10, 15 or 20 minutes; each snooze
+//     button shows the new best punch-in time.
+//   - URGENT alarm (beeps + red screen): when my real lunch reaches URGENT_AT
+//     minutes, so I never pass 1 hour.
+//   - "Stop" ends one alarm; "No more alarms today" ends all alarms today.
+// Limit: a phone web app can only ring while it is open on the screen
+// (Android pauses it in the background). "Keep screen on during lunch" keeps
+// it awake; a notification is also tried when the app is in the background.
+// ---------------------------------------------------------------------------
+let audioCtx = null;
+let activeAlarm = null;     // "gentle" | "urgent" | null
+let alarmTimer = null;      // repeats the sound while the alarm is shown
+let wakeLock = null;
+
+/**
+ * Best punch-in window after lunch, starting no earlier than `from`.
+ * @param {number} b lunch punch-out (minutes since midnight)
+ * @param {number} [from] earliest minute to consider (for example after a snooze)
+ * @returns {{start:number, end:number, counts:number}}
+ */
+function bestReturn(b, from){
+  const t = Math.max(b + LUNCH, from == null ? 0 : from);
+  const r = ((t % 15) + 15) % 15;
+  const start = r <= 7 ? t : t + (15 - r);   // first minute that rounds back
+  const counts = rnd(start);
+  return { start, end: counts + 7, counts };
+}
+
+function loadAlarmState(){
+  const fresh = { date: todayKey(), off: false, gentleDone: false, urgentDone: false, snoozeUntil: null };
+  try{
+    const s = JSON.parse(localStorage.getItem(ALARM_KEY) || "null");
+    return s && s.date === fresh.date ? Object.assign(fresh, s) : fresh;
+  }catch(e){ return fresh; }
+}
+function saveAlarmState(s){ try{ localStorage.setItem(ALARM_KEY, JSON.stringify(s)); }catch(e){} }
+
+/** Minute when the gentle alarm rings (after a snooze: the snooze end). */
+function gentleAt(b, st){ return st.snoozeUntil != null ? st.snoozeUntil : bestReturn(b).start - GENTLE_LEAD; }
+
+/** Alarm status shown under the lunch advice on the Today screen. */
+function alarmLineHtml(b){
+  const st = loadAlarmState();
+  let h = `<div class="alarmline">`;
+  if(st.off){
+    h += `🔕 Alarms are off for today. <button class="linkbtn" data-act="alarmsOn">Turn back on</button>`;
+  }else{
+    const g = st.gentleDone ? "done" : fmtClock(gentleAt(b, st)) + (st.snoozeUntil != null ? " (snoozed)" : "");
+    const u = st.urgentDone ? "done" : fmtClock(b + URGENT_AT);
+    h += `🔔 Gentle alarm: <b>${g}</b> · 🚨 Urgent: <b>${u}</b>
+      <button class="info" data-info="iAlarm" aria-label="About alarms">i</button><br>
+      <button class="linkbtn" data-act="alarmsOff">No more alarms today</button> ·
+      <button class="linkbtn" data-act="testSound">Test sound</button>`;
+    if("Notification" in window && Notification.permission === "default"){
+      h += ` · <button class="linkbtn" data-act="allowNotif">Allow notifications</button>`;
+    }
+    h += `<label><input type="checkbox" data-act="keepAwake" ${meta.keepAwake ? "checked" : ""}> Keep screen on during lunch (alarms ring reliably)</label>`;
+  }
+  h += `<div id="iAlarm" class="infobox hidden">The gentle alarm rings ${GENTLE_LEAD} min before your best punch-in time.
+    The urgent alarm rings when your real lunch reaches ${URGENT_AT} min. Alarms ring only while the app is open on the screen:
+    Android pauses web apps in the background. Turn on <b>Keep screen on during lunch</b> and leave the app open, or allow notifications.</div>`;
+  return h + `</div>`;
+}
+
+/** The phone only plays sound after a tap; the first tap anywhere unlocks it. */
+function audio(){
+  try{
+    if(!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      audioCtx = new AC();
+    }
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }catch(e){ return null; }
+}
+
+/** Play one tone. */
+function tone(ctx, freq, start, length, type, volume){
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + length);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + length + 0.05);
+}
+
+/** Gentle alarm: three soft rising notes (C - E - G). */
+function playGentle(){
+  const ctx = audio(); if(!ctx) return;
+  const t = ctx.currentTime;
+  [523.25, 659.25, 783.99].forEach((f, i) => tone(ctx, f, t + i * 0.4, 1.6, "sine", 0.2));
+  vibrate([150, 120, 150]);
+}
+
+/** Urgent alarm: three sharp beeps. */
+function playUrgent(){
+  const ctx = audio(); if(!ctx) return;
+  const t = ctx.currentTime;
+  for(let i = 0; i < 3; i++) tone(ctx, 880, t + i * 0.25, 0.16, "square", 0.3);
+  vibrate([400, 150, 400, 150, 400]);
+}
+
+/** Vibrate if the phone allows it (only after a first tap on the app). */
+function vibrate(pattern){
+  try{ if(navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate(pattern); }catch(e){}
+}
+
+/** Show a system notification when the app is in the background (if allowed). */
+function notify(title, body){
+  if(!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+  if(!navigator.serviceWorker) return;
+  navigator.serviceWorker.ready.then(reg => reg.showNotification(title, {
+    body, tag: "punch-lunch", renotify: true, requireInteraction: true, icon: "icon-192.png"
+  })).catch(() => {});
+}
+
+function showAlarm(kind){
+  const rec = days[todayKey()];
+  if(!rec || !rec.out1) return;
+  const b = toMin(rec.out1), now = nowMin(), lunch = now - b;
+  activeAlarm = kind;
+  clearInterval(alarmTimer);
+  let html;
+  if(kind === "gentle"){
+    const plan = bestReturn(b, now);
+    const snoozes = SNOOZES.map(s => {
+      const p = bestReturn(b, now + s);
+      return `<button data-snooze="${s}">Snooze ${s} min<small>punch in ${fmtClock(p.start)}</small></button>`;
+    }).join("");
+    html = `<div class="alarm"><h3>🔔 Lunch is almost over</h3>
+      <div>Best time to punch IN:</div>
+      <div class="when">${fmtClock(plan.start)} – ${fmtClock(plan.end)}</div>
+      <div>Counts as <b>${fmtClock(plan.counts)}</b> on the card · Lunch so far: <b>${lunch} min</b></div>
+      <button class="primary" data-alarm="punch">I punched IN</button>
+      <div class="snooze">${snoozes}</div>
+      <div class="stops"><button data-alarm="stop">Stop alarm</button><button data-alarm="off">No more alarms today</button></div></div>`;
+    playGentle();
+    alarmTimer = setInterval(playGentle, 15000);
+    notify("Lunch is almost over", "Best time to punch in: " + fmtClock(plan.start) + " – " + fmtClock(plan.end));
+  }else{
+    // Near 1 hour, coming back now matters more than the best rounding.
+    html = `<div class="alarm urgent"><h3>🚨 Almost 1 hour of lunch!</h3>
+      <div class="when">${lunch} min</div>
+      <div>Go back and punch IN now. It counts as <b>${fmtClock(rnd(now))}</b> on the card.</div>
+      <button class="primary" data-alarm="punch">I punched IN</button>
+      <div class="stops"><button data-alarm="stop">Stop alarm</button><button data-alarm="off">No more alarms today</button></div></div>`;
+    playUrgent();
+    alarmTimer = setInterval(playUrgent, 2500);
+    notify("Almost 1 hour of lunch!", "Lunch so far: " + lunch + " min. Punch in now.");
+  }
+  document.getElementById("alarmHost").innerHTML = `<div class="alarm-bg">${html}</div>`;
+}
+
+function closeAlarm(){
+  clearInterval(alarmTimer);
+  alarmTimer = null;
+  activeAlarm = null;
+  document.getElementById("alarmHost").innerHTML = "";
+  vibrate(0);
+}
+
+/** Called every few seconds: ring an alarm when it is due. */
+function checkAlarms(){
+  const rec = days[todayKey()];
+  const onLunch = !!(rec && rec.out1 && !rec.in2);
+  updateWakeLock(onLunch);
+  if(!onLunch){ if(activeAlarm) closeAlarm(); return; }
+  const st = loadAlarmState();
+  if(st.off){ if(activeAlarm) closeAlarm(); return; }
+  const b = toMin(rec.out1), now = nowMin();
+  if(!st.urgentDone && now - b >= URGENT_AT){
+    if(activeAlarm !== "urgent") showAlarm("urgent");
+    return;
+  }
+  if(!activeAlarm && !st.gentleDone && now >= gentleAt(b, st)) showAlarm("gentle");
+}
+
+/** Buttons on the alarm screen. */
+function onAlarmClick(ev){
+  const snooze = ev.target.closest("[data-snooze]");
+  const act = ev.target.closest("[data-alarm]");
+  if(!snooze && !act) return;
+  const st = loadAlarmState();
+  if(snooze){
+    st.snoozeUntil = nowMin() + Number(snooze.dataset.snooze);
+    st.gentleDone = false;
+  }else if(act.dataset.alarm === "stop"){
+    if(activeAlarm === "urgent") st.urgentDone = true; else st.gentleDone = true;
+  }else if(act.dataset.alarm === "off"){
+    st.off = true;
+  }else if(act.dataset.alarm === "punch"){
+    closeAlarm();
+    punchNow();
+    return;
+  }
+  saveAlarmState(st);
+  closeAlarm();
+  renderAll();
+}
+
+/** Links under the lunch advice (alarms off/on, test sound, notifications, keep awake). */
+function onAlarmSettingClick(ev){
+  const el = ev.target.closest("[data-act]");
+  if(!el) return;
+  const st = loadAlarmState();
+  switch(el.dataset.act){
+    case "alarmsOff": st.off = true; saveAlarmState(st); closeAlarm(); renderAll(); break;
+    case "alarmsOn": st.off = false; saveAlarmState(st); renderAll(); break;
+    case "testSound": playGentle(); setTimeout(playUrgent, 2200); break;
+    case "allowNotif":
+      try{ Notification.requestPermission().then(renderAll); }catch(e){}
+      break;
+    case "keepAwake":
+      meta.keepAwake = el.checked; saveMeta(); checkAlarms();
+      break;
+  }
+}
+
+/** Keep the screen on while I am on lunch, if I asked for it. */
+function updateWakeLock(onLunch){
+  const want = !!(meta.keepAwake && onLunch && !document.hidden && navigator.wakeLock);
+  if(want && !wakeLock){
+    navigator.wakeLock.request("screen").then(lock => {
+      wakeLock = lock;
+      lock.addEventListener("release", () => { wakeLock = null; });
+    }).catch(() => {});
+  }else if(!want && wakeLock){
+    wakeLock.release().catch(() => {});
+    wakeLock = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // History view
 // Mickael Cauberghs, 2026-11-07: search any day or period (week, month, custom
 // dates) and see real vs. card time, so I can compare with ADP and explain any
@@ -638,41 +1002,95 @@ function rangeKeys(){
   return Object.keys(days).filter(k => (!from || k >= from) && (!to || k <= to)).sort();
 }
 
+/** Parse ADP's daily total ("8.25", "8,25") into minutes, or null when empty. */
+function adpMinutes(rec){
+  if(rec.adp == null || rec.adp === "") return null;
+  const h = parseFloat(String(rec.adp).replace(",", "."));
+  return isNaN(h) ? null : Math.round(h * 60);
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-07 (v1.3.0): "Check vs ADP" mode. I type ADP's
+ * Daily Total for each day; the app compares it with the card hours it
+ * calculated from my punches, so I see at once if ADP lost or changed a punch.
+ */
 function renderHistory(){
   const keys = rangeKeys();
   const from = fFrom().value, to = fTo().value;
+  const recon = document.getElementById("reconToggle").checked;
+  document.getElementById("reconHelp").classList.toggle("hidden", !recon);
   document.getElementById("histTitle").textContent =
     (!from && !to) ? "All days" : (from===to ? prettyDate(from) : (from?prettyDate(from):"…") + " → " + (to?prettyDate(to):"…"));
-  let R=0, C=0, n=0;
-  let body = "", curWeek = null, wR=0, wC=0;
-  const flushWeek = () => { if(curWeek!==null) body += `<tr class="weekrow"><td>Week of ${prettyDate(curWeek).slice(4)}</td><td colspan="5"></td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtDiff(wC-wR)}</td></tr>`; };
+
+  let R=0, C=0, A=0, n=0, aDays=0, bad=0;
+  let body = "", curWeek = null, wR=0, wC=0, wA=0;
+  const span = recon ? 1 : 5;
+  const flushWeek = () => {
+    if(curWeek === null) return;
+    body += recon
+      ? `<tr class="weekrow"><td>Week ${shortDate(curWeek).slice(4)}</td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtHrs(wA)}</td><td></td></tr>`
+      : `<tr class="weekrow"><td>Week of ${prettyDate(curWeek).slice(4)}</td><td colspan="${span}"></td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtDiff(wC-wR)}</td></tr>`;
+  };
   for(const k of keys){
     const rec = days[k], c = calc(rec);
     const wk = mondayOf(k);
-    if(wk !== curWeek){ flushWeek(); curWeek = wk; wR = 0; wC = 0; }
+    if(wk !== curWeek){ flushWeek(); curWeek = wk; wR = 0; wC = 0; wA = 0; }
     wR += c.real; wC += c.card; R += c.real; C += c.card; if(c.real>0) n++;
-    const t = f => rec[f] ? fmtClock(toMin(rec[f])) : "—";
-    body += `<tr data-k="${k}"><td>${prettyDate(k)}${rec.note?" 📝":""}</td><td>${t("in1")}</td><td>${t("out1")}</td><td>${t("in2")}</td><td>${t("out2")}</td>
-      <td>${c.lunch!=null?c.lunch+" min":"—"}</td><td>${fmtDur(c.real)}</td><td>${fmtHrs(c.card)}</td>
-      <td class="${c.diff>=0?"pos":"neg"}">${fmtDiff(c.diff)}</td></tr>`;
+    const label = `${recon ? shortDate(k) : prettyDate(k)}${rec.note?" 📝":""}`;
+    if(recon){
+      const a = adpMinutes(rec);
+      let check = `<span class="note">?</span>`;
+      if(a != null){
+        wA += a; A += a; aDays++;
+        if(a === c.card) check = `<span class="ok">✓</span>`;
+        else { bad++; check = `<span class="bad">✗<br><small>${fmtDiff(a - c.card)}</small></span>`; }
+      }
+      body += `<tr data-k="${k}"><td>${label}</td><td>${fmtDur(c.real)}</td><td>${fmtHrs(c.card)}</td>
+        <td><input class="adp" type="text" inputmode="decimal" data-adp="${k}" value="${esc(rec.adp == null ? "" : rec.adp)}" placeholder="0.00"></td><td>${check}</td></tr>`;
+    }else{
+      const t = f => rec[f] ? fmtClock(toMin(rec[f])) : "—";
+      body += `<tr data-k="${k}"><td>${label}</td><td>${t("in1")}</td><td>${t("out1")}</td><td>${t("in2")}</td><td>${t("out2")}</td>
+        <td>${c.lunch!=null?c.lunch+" min":"—"}</td><td>${fmtDur(c.real)}</td><td>${fmtHrs(c.card)}</td>
+        <td class="${c.diff>=0?"pos":"neg"}">${fmtDiff(c.diff)}</td></tr>`;
+    }
   }
   flushWeek();
-  const head = `<thead><tr><th>Day</th><th>In</th><th>Out</th><th>In</th><th>Out</th><th>Lunch</th><th>Real</th><th>Card</th><th>Card vs real</th></tr></thead>`;
-  const foot = keys.length ? `<tfoot><tr><td>Total (${n} days)</td><td colspan="5"></td><td>${fmtDur(R)}</td><td>${fmtHrs(C)}</td><td class="${C-R>=0?"pos":"neg"}">${fmtDiff(C-R)}</td></tr></tfoot>` : "";
-  document.getElementById("histTable").innerHTML = head + "<tbody>" + (body || `<tr><td colspan="9" style="text-align:center;color:var(--muted);cursor:default">No days in this period.</td></tr>`) + "</tbody>" + foot;
-  document.getElementById("rangeStats").innerHTML = stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
-  document.querySelectorAll("#histTable tbody tr[data-k]").forEach(tr => tr.addEventListener("click", () => openEditor(tr.dataset.k)));
+
+  const cols = recon ? 5 : 9;
+  const head = recon
+    ? `<thead><tr><th>Day</th><th>Real</th><th>Card</th><th>ADP</th><th>✓/✗</th></tr></thead>`
+    : `<thead><tr><th>Day</th><th>In</th><th>Out</th><th>In</th><th>Out</th><th>Lunch</th><th>Real</th><th>Card</th><th>Card vs real</th></tr></thead>`;
+  const foot = !keys.length ? "" : recon
+    ? `<tfoot><tr><td>Total</td><td>${fmtDur(R)}</td><td>${fmtHrs(C)}</td><td>${fmtHrs(A)}</td><td>${aDays ? (bad ? `<span class="bad">${bad} ✗</span>` : `<span class="ok">✓</span>`) : ""}</td></tr></tfoot>`
+    : `<tfoot><tr><td>Total (${n} days)</td><td colspan="5"></td><td>${fmtDur(R)}</td><td>${fmtHrs(C)}</td><td class="${C-R>=0?"pos":"neg"}">${fmtDiff(C-R)}</td></tr></tfoot>`;
+  document.getElementById("histTable").innerHTML = head + "<tbody>" +
+    (body || `<tr><td colspan="${cols}" style="text-align:center;color:var(--muted);cursor:default">No days in this period.</td></tr>`) + "</tbody>" + foot;
+
+  document.getElementById("rangeStats").innerHTML = recon
+    ? stat(fmtHrs(C), "Card (app)") + stat(aDays ? fmtHrs(A) : "—", "ADP") + stat(aDays ? (bad ? bad + " ✗" : "All ✓") : "—", "Days different", bad ? "neg" : "pos")
+    : stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
+
+  document.querySelectorAll("#histTable tbody tr[data-k]").forEach(tr => tr.addEventListener("click", ev => {
+    if(ev.target.closest("input")) return;
+    openEditor(tr.dataset.k);
+  }));
+  document.querySelectorAll("#histTable input[data-adp]").forEach(inp => inp.addEventListener("change", () => {
+    const k = inp.dataset.adp, r2 = Object.assign({}, days[k]);
+    r2.adp = inp.value.trim();
+    setDay(r2);
+  }));
 }
 
 function openEditor(k){
   const isNew = !k;
-  const rec = k && days[k] ? Object.assign({}, days[k]) : {date: k || todayKey(), in1:"", out1:"", in2:"", out2:"", note:""};
+  const rec = k && days[k] ? Object.assign({}, days[k]) : {date: k || todayKey(), in1:"", out1:"", in2:"", out2:"", note:"", adp:""};
   const host = document.getElementById("modalHost");
-  const row = (f,label) => `<div class="row"><span>${label}</span><input type="time" id="e_${f}" value="${esc(rec[f])}"></div>`;
+  const row = (f,label) => `<div class="row"><span>${label}</span><span><input type="time" id="e_${f}" value="${esc(rec[f])}"><button class="clr" data-eclr="${f}" aria-label="Remove this punch">✕</button></span></div>`;
   host.innerHTML = `<div class="modal-bg"><div class="modal">
-    <h3>${isNew ? "Add or fix a day" : prettyDate(rec.date)}</h3>
+    <h3>${isNew ? "Add or edit any day" : prettyDate(rec.date)}</h3>
     <div class="row"><span>Date</span><input type="date" id="e_date" value="${esc(rec.date)}"></div>
     ${row("in1","Punch IN (start)")}${row("out1","Punch OUT (lunch)")}${row("in2","Punch IN (after lunch)")}${row("out2","Punch OUT (end)")}
+    <div class="row"><span>ADP daily total (hours)</span><input class="adp" type="text" inputmode="decimal" id="e_adp" value="${esc(rec.adp == null ? "" : rec.adp)}" placeholder="0.00"></div>
     <div style="margin-top:8px"><span>Note</span><input type="text" id="e_note" style="width:100%;margin-top:4px" placeholder="e.g. forgot to punch, doctor visit" value="${esc(rec.note)}"></div>
     <div id="e_preview" class="note" style="margin-top:10px"></div>
     <div class="actions">
@@ -685,11 +1103,14 @@ function openEditor(k){
   const read = () => ({
     date: document.getElementById("e_date").value,
     in1: val("in1"), out1: val("out1"), in2: val("in2"), out2: val("out2"),
-    note: document.getElementById("e_note").value.trim()
+    note: document.getElementById("e_note").value.trim(),
+    adp: document.getElementById("e_adp").value.trim()
   });
   const preview = () => {
     const r2 = read(), c = calc(r2);
     let t = `Real: <b>${fmtDur(c.real)}</b> · Card: <b>${fmtHrs(c.card)}</b> · Card vs real: <b>${fmtDiff(c.diff)}</b>`;
+    const a = adpMinutes(r2);
+    if(a != null) t += a === c.card ? `<br>ADP: <span class="ok">✓ matches</span>` : `<br>ADP: <span class="bad">✗ ${fmtDiff(a - c.card)} vs card</span>`;
     if(orderProblem(r2)) t += `<br><span class="neg">Times are not in order.</span>`;
     if(!isNew && r2.date !== rec.date && days[r2.date]) t += `<br><span class="neg">${prettyDate(r2.date)} already exists and will be replaced.</span>`;
     if(isNew && days[r2.date]) t += `<br>This day already has entries. Saving replaces them.`;
@@ -698,11 +1119,18 @@ function openEditor(k){
   if(isNew){
     document.getElementById("e_date").addEventListener("change", () => {
       const d = document.getElementById("e_date").value;
-      if(days[d]){ FIELDS.forEach(f => document.getElementById("e_"+f).value = days[d][f] || ""); document.getElementById("e_note").value = days[d].note || ""; }
+      const src = days[d] || {};
+      FIELDS.forEach(f => document.getElementById("e_"+f).value = src[f] || "");
+      document.getElementById("e_note").value = src.note || "";
+      document.getElementById("e_adp").value = src.adp || "";
       preview();
     });
   }
   host.querySelectorAll("input").forEach(i => i.addEventListener("input", preview));
+  host.querySelectorAll("button[data-eclr]").forEach(b => b.addEventListener("click", () => {
+    document.getElementById("e_" + b.dataset.eclr).value = "";
+    preview();
+  }));
   preview();
   const close = () => { host.innerHTML = ""; };
   document.getElementById("e_cancel").onclick = close;
@@ -710,7 +1138,7 @@ function openEditor(k){
     const r2 = read();
     if(!/^\d{4}-\d\d-\d\d$/.test(r2.date)) return;
     if(!isNew && r2.date !== rec.date) removeDay(rec.date);
-    if(FIELDS.every(f => !r2[f]) && !r2.note){ if(days[r2.date]) removeDay(r2.date); }
+    if(FIELDS.every(f => !r2[f]) && !r2.note && !r2.adp){ if(days[r2.date]) removeDay(r2.date); }
     else setDay(r2);
     close();
   };
@@ -724,10 +1152,10 @@ function openEditor(k){
 
 function copyTable(){
   const keys = rangeKeys();
-  const lines = [["Date","In","Out (lunch)","In (lunch)","Out","Lunch min","Real h:mm","Card hrs","Card vs real min","Note"].join("\t")];
+  const lines = [["Date","In","Out (lunch)","In (lunch)","Out","Lunch min","Real h:mm","Card hrs","Card vs real min","ADP hrs","Note"].join("\t")];
   for(const k of keys){
     const r = days[k], c = calc(r);
-    lines.push([k, r.in1, r.out1, r.in2, r.out2, c.lunch==null?"":c.lunch, fmtDur(c.real), fmtHrs(c.card), c.diff, (r.note||"").replace(/\s+/g," ")].join("\t"));
+    lines.push([k, r.in1, r.out1, r.in2, r.out2, c.lunch==null?"":c.lunch, fmtDur(c.real), fmtHrs(c.card), c.diff, r.adp || "", (r.note||"").replace(/\s+/g," ")].join("\t"));
   }
   const text = lines.join("\n");
   const box = document.getElementById("copyBox");
@@ -746,6 +1174,7 @@ function renderAll(){
   renderAdvice(); renderTodayStats();
   if(!document.activeElement || document.activeElement.type !== "time") renderSteps();
   renderHistory();
+  renderBackupStatus();
 }
 function showTab(t){
   document.getElementById("viewToday").classList.toggle("hidden", t!=="today");
@@ -767,11 +1196,31 @@ document.getElementById("restoreInput").addEventListener("change", ev => {
   ev.target.value = "";
 });
 document.querySelectorAll(".chips button").forEach(b => b.onclick = () => setRange(b.dataset.q));
+document.getElementById("reconToggle").addEventListener("change", renderHistory);
+
+// Mickael Cauberghs, 2026-11-07 (v1.3.0): tiny (i) buttons show or hide the
+// details, so the screens stay short and easy to read.
+document.addEventListener("click", ev => {
+  const b = ev.target.closest(".info");
+  if(!b) return;
+  const box = document.getElementById(b.dataset.info);
+  if(box) box.classList.toggle("hidden");
+});
 fFrom().addEventListener("change", renderHistory);
 fTo().addEventListener("change", renderHistory);
 
+// Lunch alarms: unlock sound on the first tap, handle alarm buttons, check often.
+document.addEventListener("pointerdown", () => { audio(); }, { passive: true });
+document.getElementById("alarmHost").addEventListener("click", onAlarmClick);
+document.getElementById("advice").addEventListener("click", onAlarmSettingClick);
+document.addEventListener("visibilitychange", () => { if(!document.hidden){ renderAll(); } checkAlarms(); });
+
 let lastMin = -1;
-setInterval(() => { const m = nowMin(); if(m !== lastMin){ lastMin = m; renderAll(); } }, 5000);
+setInterval(() => {
+  const m = nowMin();
+  if(m !== lastMin){ lastMin = m; renderAll(); }
+  checkAlarms();
+}, 5000);
 
 document.getElementById("versionLabel").textContent = "v" + APP_VERSION + " (" + APP_DATE + ")";
 setRange("week");
