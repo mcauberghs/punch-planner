@@ -1,7 +1,7 @@
 {
   "name": "Punch Planner",
   "short_name": "Punch",
-  "description": "Plan ADP punch times for a real 8-hour day. By Mickael Cauberghs, v1.1.0 (2026-11-07).",
+  "description": "Plan ADP punch times for a real 8-hour day. By Mickael Cauberghs, v1.2.0 (2026-11-07).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

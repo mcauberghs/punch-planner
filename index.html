@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.0.0 (2026-11-07)
+  Version : 1.2.0 (2026-11-07)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -26,6 +26,10 @@
                        works offline, data saved on the phone, backup file
                        save/restore. New logo: a laser beam writing "8:00"
                        on a time card (I work in the laser industry).
+    1.2.0  2026-11-07  Mickael Cauberghs  "Share backup" button: send all my
+                       punches from the phone by email or Google Drive, so I
+                       can open them on my laptop and improve the app without
+                       losing my real times.
   ============================================================================
 -->
 <html lang="en">
@@ -195,9 +199,10 @@
 
     <div class="card">
       <h2>Backup</h2>
-      <p style="margin:0 0 8px">Your punches are saved on this phone only. Save a backup file once a week (for example to Google Drive or email it to yourself).</p>
+      <p style="margin:0 0 8px">Your punches are saved on this phone only. Share a backup once a week (email it to yourself or save it to Google Drive). Updating the app never deletes your punches.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn solid" id="backupBtn">Save backup file</button>
+        <button class="btn solid" id="shareBtn">Share backup (email, Drive…)</button>
+        <button class="btn" id="backupBtn">Save backup file</button>
         <label class="btn" for="restoreInput" style="cursor:pointer">Restore from backup</label>
         <input type="file" id="restoreInput" accept=".json,application/json" class="hidden">
       </div>
@@ -213,7 +218,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.0.0 (2026-11-07) - Mickael Cauberghs
+ * Version 1.2.0 (2026-11-07) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -230,7 +235,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const APP_DATE = "2026-11-07";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -334,22 +339,50 @@ async function initStore(){
 }
 
 /**
- * Mickael Cauberghs, 2026-11-07: download all my days as one JSON file
+ * Mickael Cauberghs, 2026-11-07: build the backup file with all my days,
  * named PunchPlanner_Backup_YYYYMMDD_HHMM.json (my file-naming rule).
  */
-function saveBackup(){
+function buildBackupFile(){
   const d = new Date();
   const stamp = d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + "_" + pad(d.getHours()) + pad(d.getMinutes());
   const payload = { app: "Punch Planner", version: APP_VERSION, saved: d.toISOString(), days: days };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const name = "PunchPlanner_Backup_" + stamp + ".json";
+  return new File([JSON.stringify(payload, null, 2)], name, { type: "application/json" });
+}
+
+/** Save the backup file into the phone's Downloads folder. */
+function saveBackup(){
+  const file = buildBackupFile();
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "PunchPlanner_Backup_" + stamp + ".json";
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  document.getElementById("backupMsg").textContent = "Backup saved: " + a.download + " (" + Object.keys(days).length + " days).";
+  document.getElementById("backupMsg").textContent =
+    "Saved to Downloads: " + file.name + " (" + Object.keys(days).length + " days).";
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-07 (v1.2.0): send the backup file straight from
+ * the phone (Gmail, Google Drive, Messages...) so I can open it on my laptop
+ * and work on the app with my real times, without losing anything.
+ * Falls back to "save to Downloads" when the phone cannot share files.
+ */
+async function shareBackup(){
+  const file = buildBackupFile();
+  const msg = document.getElementById("backupMsg");
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ files: [file], title: file.name, text: "Punch Planner backup (" + Object.keys(days).length + " days)" });
+      msg.textContent = "Shared: " + file.name;
+    }catch(e){
+      if(e && e.name !== "AbortError") msg.textContent = "Sharing did not work. Use Save backup file instead.";
+    }
+  }else{
+    saveBackup();
+  }
 }
 
 /** Restore days from a backup file. Days in the file replace the same dates on the phone. */
@@ -727,6 +760,7 @@ document.getElementById("undoBtn").onclick = undo;
 document.getElementById("addDayBtn").onclick = () => openEditor(null);
 document.getElementById("copyBtn").onclick = copyTable;
 document.getElementById("backupBtn").onclick = saveBackup;
+document.getElementById("shareBtn").onclick = shareBackup;
 document.getElementById("restoreInput").addEventListener("change", ev => {
   const f = ev.target.files && ev.target.files[0];
   if(f) restoreBackup(f);
