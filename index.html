@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.3.0 (2026-11-07)
+  Version : 1.3.1 (2026-11-07)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -39,6 +39,9 @@
                        punch back in (snooze 5/10/15/20 min with a new best
                        time), an urgent red alarm at 55 min of real lunch,
                        and "No more alarms today".
+    1.3.1  2026-11-07  Mickael Cauberghs  End-of-day box is RED (white
+                       letters) while it is too early to punch out, GREEN
+                       when my 8 hours are done; (i) explains the colors.
   ============================================================================
 -->
 <html lang="en">
@@ -78,6 +81,11 @@
   .advice.good{background:var(--green-bg);border-color:transparent}
   .advice.wait{background:var(--amber-bg);border-color:transparent}
   .advice.done{background:var(--card)}
+  .advice.early{background:#c0261a;color:#fff;border-color:transparent}
+  .advice.go{background:#16794a;color:#fff;border-color:transparent}
+  .advice.early .label,.advice.go .label{color:rgba(255,255,255,.85)}
+  .advice.early .info,.advice.go .info{background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.5)}
+  .advice.early .warn,.advice.go .warn,.advice .infobox{color:var(--ink)}
   .advice .label{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
   .advice .big{font-size:34px;font-weight:800;margin:4px 0;line-height:1.15}
   .advice .sub{font-size:16px}
@@ -281,7 +289,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.3.0 (2026-11-07) - Mickael Cauberghs
+ * Version 1.3.1 (2026-11-07) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -298,7 +306,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const APP_DATE = "2026-11-07";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -628,19 +636,29 @@ function renderAdvice(){
     const best = Math.max(endReal, rNeed - 7);
     const q = rnd(best), lastGood = q + 7;
     const realAt = morningReal + (best - c), cardAt = cardMorning + (q - rnd(c));
+    // Mickael Cauberghs, 2026-11-07 (v1.3.1): the box is RED (white letters)
+    // while it is too early to leave, and GREEN once my 8 hours are done, so I
+    // see at a glance if I can go.
+    const colorInfo = ` <button class="info" data-info="iOut" aria-label="What the colors mean">i</button>
+      <div id="iOut" class="infobox hidden"><b>Colors:</b>
+        <ul><li><b>Red</b>: too early. If you punch out now, you have less than 8:00 of real work or less than 8.00 card hours.</li>
+        <li><b>Green</b>: you can go. You did your 8:00 of real work and the card shows 8.00 hours (or more).</li></ul>
+        The <b>good window</b> is the time when your punch still counts as the same quarter hour.</div>`;
     if(now < best){
-      cls = "wait";
-      html = `<div class="label">Punch out at</div><div class="big">${fmtClock(best)}</div>
+      cls = "early";
+      html = `<div class="label">Punch out at${colorInfo}</div><div class="big">${fmtClock(best)}</div>
         <div class="sub">In <span class="countdown">${fmtDur(best-now)}</span>. Good window: <b>${fmtClock(best)} – ${fmtClock(lastGood)}</b> (counts as ${fmtClock(q)}).</div>
         <ul><li>Real work: <b>${fmtDur(realAt)}</b> · Card: <b>${fmtHrs(cardAt)}</b></li>
         <li>Do not punch before ${fmtClock(best)}.</li></ul>`;
     } else if(now <= lastGood){
       const realNow = morningReal + (now - c), cardNow = cardMorning + (rnd(now) - rnd(c));
-      html = `<div class="label">You can go</div><div class="big">Punch OUT now ✓</div>
+      cls = "go";
+      html = `<div class="label">You can go${colorInfo}</div><div class="big">Punch OUT now ✓</div>
         <div class="sub">Counts as <b>${fmtClock(rnd(now))}</b>. Real work: <b>${fmtDur(realNow)}</b> · Card: <b>${fmtHrs(cardNow)}</b>. Good until ${fmtClock(lastGood)}.</div>`;
     } else {
       const realNow = morningReal + (now - c), cardNow = cardMorning + (rnd(now) - rnd(c));
-      html = `<div class="label">Overtime today</div><div class="big">Punch OUT now</div>
+      cls = "go";
+      html = `<div class="label">Overtime today${colorInfo}</div><div class="big">Punch OUT now</div>
         <div class="sub">Now counts as <b>${fmtClock(rnd(now))}</b>. Real work: <b>${fmtDur(realNow)}</b> · Card: <b>${fmtHrs(cardNow)}</b>.</div>`;
     }
     // Mickael Cauberghs, 2026-11-07: in my first week I went over 40 card hours
@@ -1175,6 +1193,7 @@ function renderAll(){
   if(!document.activeElement || document.activeElement.type !== "time") renderSteps();
   renderHistory();
   renderBackupStatus();
+  reopenInfos();
 }
 function showTab(t){
   document.getElementById("viewToday").classList.toggle("hidden", t!=="today");
@@ -1200,11 +1219,19 @@ document.getElementById("reconToggle").addEventListener("change", renderHistory)
 
 // Mickael Cauberghs, 2026-11-07 (v1.3.0): tiny (i) buttons show or hide the
 // details, so the screens stay short and easy to read.
+// The Today screen refreshes every minute, so the app remembers which (i)
+// boxes are open and opens them again after each refresh.
+const openInfos = new Set();
+function reopenInfos(){
+  openInfos.forEach(id => { const box = document.getElementById(id); if(box) box.classList.remove("hidden"); });
+}
 document.addEventListener("click", ev => {
   const b = ev.target.closest(".info");
   if(!b) return;
   const box = document.getElementById(b.dataset.info);
-  if(box) box.classList.toggle("hidden");
+  if(!box) return;
+  box.classList.toggle("hidden");
+  if(box.classList.contains("hidden")) openInfos.delete(box.id); else openInfos.add(box.id);
 });
 fFrom().addEventListener("change", renderHistory);
 fTo().addEventListener("change", renderHistory);
