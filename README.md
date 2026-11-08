@@ -1,6 +1,6 @@
 # Punch Planner
 
-**Version 1.4.0 (2026-11-08)** · Author: Mickael Cauberghs
+**Version 1.4.1 (2026-11-08)** · Author: Mickael Cauberghs
 
 A small Android app (installable web app) that tells me the best time to punch
 in and out on the ADP timecard, so I work a real 8:00 per day, take a real
@@ -53,3 +53,4 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 | 1.3.0   | 2026-11-07 | Mickael Cauberghs  | Check vs ADP (reconciliation), lunch alarms (gentle + snooze, urgent red, stop for today), (i) info buttons, daily backup reminder, remove one punch, bigger logo |
 | 1.3.1   | 2026-11-07 | Mickael Cauberghs  | End-of-day box red (too early) / green (8 hours done), with (i) explanation |
 | 1.4.0   | 2026-11-08 | Mickael Cauberghs  | Type times on the number keypad with AM/PM buttons (no clock picker); cleaner day editor |
+| 1.4.1   | 2026-11-08 | Mickael Cauberghs  | Fix: Today's punches aligned, one per line |

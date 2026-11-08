@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.0 (2026-11-08)
+  Version : 1.4.1 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -46,6 +46,8 @@
                        on the number keypad ("837" -> 8:37) and tap AM or PM,
                        instead of the phone clock picker. Cleaner "Add or
                        edit any day" window: one aligned line per punch.
+    1.4.1  2026-11-08  Mickael Cauberghs  Fix: "Today's punches" were side by
+                       side and went off the screen; now one punch per line.
   ============================================================================
 -->
 <html lang="en">
@@ -99,7 +101,8 @@
   .primary{display:block;width:100%;padding:20px;font-size:21px;font-weight:800;border:0;border-radius:14px;background:var(--blue);color:var(--blue-ink);cursor:pointer;margin:12px 0 6px}
   .primary:active{transform:scale(.99)}
   .linkbtn{background:none;border:0;color:var(--blue);font-size:15px;cursor:pointer;padding:6px 0;text-decoration:underline}
-  .steps{display:grid;grid-template-columns:1fr auto auto;gap:8px 6px;align-items:center}
+  .steps{display:block}
+  .steps .tfield:first-child{margin-top:4px}
   .info{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);font:italic 700 13px/20px Georgia,serif;cursor:pointer;padding:0;margin-left:6px;vertical-align:middle;text-transform:none;letter-spacing:0}
   .infobox{background:var(--bg);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:400}
   .infobox ul{margin:4px 0;padding-left:18px}
@@ -109,8 +112,6 @@
   input.adp{width:64px;font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);text-align:right}
   .h2row{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .toggle{font-size:14px}
-  .steps .name{font-weight:600}
-  .steps .name small{display:block;font-weight:400;color:var(--muted)}
   input[type=time],input[type=date],input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
   input[type=time]{width:130px}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
@@ -312,7 +313,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.0 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.1 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -329,7 +330,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes

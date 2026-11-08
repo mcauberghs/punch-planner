@@ -1,6 +1,6 @@
 /*
  * Punch Planner - service worker
- * Version 1.4.0 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.1 (2026-11-08) - Mickael Cauberghs
  *
  * Mickael Cauberghs, 2026-11-07: keeps a copy of the app on my phone so it
  * opens even with no internet. It always tries the network first, so a new
@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const CACHE_NAME = "punch-planner-1.4.0";
+const CACHE_NAME = "punch-planner-1.4.1";
 const APP_FILES = [
   "./",
   "index.html",
