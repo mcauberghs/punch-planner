@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.3.1 (2026-11-07)
+  Version : 1.4.0 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -42,6 +42,10 @@
     1.3.1  2026-11-07  Mickael Cauberghs  End-of-day box is RED (white
                        letters) while it is too early to punch out, GREEN
                        when my 8 hours are done; (i) explains the colors.
+    1.4.0  2026-11-08  Mickael Cauberghs  Easier time entry: type the time
+                       on the number keypad ("837" -> 8:37) and tap AM or PM,
+                       instead of the phone clock picker. Cleaner "Add or
+                       edit any day" window: one aligned line per punch.
   ============================================================================
 -->
 <html lang="en">
@@ -137,7 +141,26 @@
   .modal{background:var(--card);border-radius:14px;padding:18px;width:100%;max-width:420px;max-height:92vh;overflow:auto}
   .modal h3{margin:0 0 12px}
   .modal .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0;gap:10px}
-  .modal .actions{display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap}
+  /* v1.4.0 - Mickael Cauberghs, 2026-11-08: typed time entry with AM/PM buttons */
+  .field{margin:12px 0}
+  .field > label,.tlabel{display:block;font-weight:600;margin-bottom:5px}
+  .tlabel span{font-weight:400;color:var(--muted)}
+  .tcard{display:block;font-weight:400;font-size:13px;color:var(--muted)}
+  .field input[type=date],.field input[type=text]{width:100%;height:46px;font-size:17px}
+  .tctl{display:flex;align-items:center;gap:8px}
+  .tinput{width:100px;height:46px;font-size:21px;font-weight:600;text-align:center;padding:0 6px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+  .tinput:focus{outline:2px solid var(--blue);outline-offset:1px}
+  .tinput.bad{border-color:var(--red);background:var(--red-bg)}
+  .ampm{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
+  .ampm button{width:54px;height:44px;border:0;background:var(--bg);color:var(--ink);font-size:16px;font-weight:700;cursor:pointer}
+  .ampm button + button{border-left:1px solid var(--line)}
+  .ampm button.on{background:var(--blue);color:#fff}
+  .tctl .clr{margin-left:auto;width:44px;height:44px;padding:0}
+  .terr{color:var(--red);font-size:13px;margin-top:4px}
+  .terr:empty{display:none}
+  .modal .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+  .modal .actions .btn{height:48px;padding:0 12px;border-radius:12px;font-size:16px;font-weight:600}
+  .modal .actions .save,.modal .actions .wide{grid-column:1 / -1}
   .status{font-size:13px;color:var(--muted);margin-top:18px;text-align:center}
   textarea{width:100%;height:140px;font:13px monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px}
   .hidden{display:none}
@@ -289,7 +312,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.3.1 (2026-11-07) - Mickael Cauberghs
+ * Version 1.4.0 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -306,8 +329,8 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.3.1";
-const APP_DATE = "2026-11-07";
+const APP_VERSION = "1.4.0";
+const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
 const WEEK_LIMIT = 2400;  // 40:00 card hours per week, in minutes
@@ -686,33 +709,137 @@ function renderAdvice(){
   el.innerHTML = html;
 }
 
+// ---------------------------------------------------------------------------
+// Time entry field
+// Mickael Cauberghs, 2026-11-08 (v1.4.0): the phone clock picker was slow.
+// Now I type the time on the number keypad ("837" -> 8:37) and tap AM or PM.
+// The app guesses AM/PM (7-11 -> AM, 12-6 -> PM) until I tap a button.
+// A 24-hour time (13:05) is also accepted and converted.
+// ---------------------------------------------------------------------------
+
+/** "HH:MM" (24 h) -> { text: "8:37", ap: "AM" } for display. */
+function to12(v24){
+  const m = toMin(v24);
+  if(m == null) return { text: "", ap: "" };
+  const h = Math.floor(m / 60);
+  return { text: (h % 12 || 12) + ":" + pad(m % 60), ap: h >= 12 ? "PM" : "AM" };
+}
+
+/** AM/PM guess for my work hours. */
+function guessAp(h){ return h >= 7 && h <= 11 ? "AM" : "PM"; }
+
+/**
+ * Read what was typed.
+ * @returns {{ok:boolean, v:string, h?:number, m?:number, h24?:boolean}}
+ *   ok=false: not a valid time; v="" when the field is empty.
+ */
+function parseTyped(text){
+  const t = String(text).trim();
+  if(!t) return { ok: true, v: "" };
+  const m = t.match(/^(\d{1,2})(?::?(\d{2}))?$/);
+  if(!m) return { ok: false, v: "" };
+  const h = Number(m[1]), mi = m[2] == null ? 0 : Number(m[2]);
+  if(h > 23 || mi > 59) return { ok: false, v: "" };
+  return { ok: true, v: "?", h, m: mi, h24: h === 0 || h >= 13 };
+}
+
+/** HTML for one time field. id must be unique on the page. */
+function timeFieldHtml(id, label, sub, v24){
+  const t = to12(v24);
+  return `<div class="tfield field">
+    <label class="tlabel" for="${id}">${label}${sub ? ` <span>(${sub})</span>` : ""}<small class="tcard" id="${id}_card"></small></label>
+    <div class="tctl">
+      <input id="${id}" class="tinput" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="done"
+        placeholder="--:--" maxlength="5" value="${esc(t.text)}" data-ap="${t.ap}" data-auto="${t.ap ? 0 : 1}" data-start="${esc(v24 || "")}">
+      <div class="ampm" role="group" aria-label="AM or PM">
+        <button type="button" data-ap="AM">AM</button><button type="button" data-ap="PM">PM</button>
+      </div>
+      <button type="button" class="clr" data-tclr aria-label="Remove this time">✕</button>
+    </div>
+    <div class="terr" id="${id}_err"></div>
+  </div>`;
+}
+
+/** Value of a time field: { ok, v } where v is "HH:MM" (24 h) or "". */
+function readTimeField(input){
+  const p = parseTyped(input.value);
+  if(!p.ok || p.v === "") return p;
+  let h = p.h;
+  if(!p.h24){
+    const ap = input.dataset.ap || guessAp(h);
+    if(ap === "AM" && h === 12) h = 0;
+    if(ap === "PM" && h < 12) h += 12;
+  }
+  return { ok: true, v: pad(h) + ":" + pad(p.m) };
+}
+
+/**
+ * Wire every time field inside root.
+ * @param {Element} root
+ * @param {function} onChange called after each change (live preview)
+ * @param {function} [onCommit] called with (input, value24) when a valid
+ *   time is finished (keyboard closed, AM/PM tapped, or cleared)
+ */
+function initTimeFields(root, onChange, onCommit){
+  root.querySelectorAll(".tctl").forEach(ctl => {
+    const input = ctl.querySelector(".tinput");
+    const err = document.getElementById(input.id + "_err");
+    const card = document.getElementById(input.id + "_card");
+
+    const refresh = showError => {
+      const p = parseTyped(input.value);
+      if(p.ok && p.v !== "" && !p.h24 && input.dataset.auto === "1") input.dataset.ap = guessAp(p.h);
+      if(p.ok && p.h24){ input.dataset.ap = p.h >= 12 ? "PM" : "AM"; }
+      ctl.querySelectorAll(".ampm button").forEach(b => b.classList.toggle("on", b.dataset.ap === input.dataset.ap && input.value !== ""));
+      const r = readTimeField(input);
+      const bad = !r.ok;
+      input.classList.toggle("bad", bad && showError);
+      err.textContent = bad && showError ? "Type a time like 8:37 (then tap AM or PM)." : "";
+      card.textContent = r.ok && r.v ? "card: " + fmtClock(rnd(toMin(r.v))) : "";
+      if(onChange) onChange();
+      return r;
+    };
+    const commit = () => {
+      const r = refresh(true);
+      if(!r.ok) return;
+      if(r.v){ const t = to12(r.v); input.value = t.text; input.dataset.ap = t.ap; }
+      if(onCommit && r.v !== input.dataset.start){ input.dataset.start = r.v; onCommit(input, r.v); }
+    };
+
+    input.addEventListener("input", () => {
+      // rebuild from the digits each time: "837" -> "8:37", "1205" -> "12:05"
+      const d = input.value.replace(/\D/g, "").slice(0, 4);
+      input.value = d.length >= 3 ? d.slice(0, d.length - 2) + ":" + d.slice(-2) : d;
+      if(input.value === "") input.dataset.auto = "1";
+      refresh(false);
+    });
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", ev => { if(ev.key === "Enter"){ ev.preventDefault(); input.blur(); } });
+    ctl.querySelectorAll(".ampm button").forEach(b => b.addEventListener("click", () => {
+      input.dataset.ap = b.dataset.ap;
+      input.dataset.auto = "0";
+      commit();
+    }));
+    ctl.querySelector("[data-tclr]").addEventListener("click", () => {
+      input.value = "";
+      input.dataset.auto = "1";
+      input.dataset.ap = "";
+      commit();
+    });
+    refresh(false);
+  });
+}
+
 function renderSteps(){
   const rec = todayRec();
   const names = {in1:["Punch IN","start of day"], out1:["Punch OUT","lunch"], in2:["Punch IN","after lunch"], out2:["Punch OUT","end of day"]};
-  let h = "";
-  for(const f of FIELDS){
-    const v = rec[f];
-    const card = v ? ` <small>card: ${fmtClock(rnd(toMin(v)))}</small>` : "";
-    h += `<div class="name">${names[f][0]} <span style="font-weight:400;color:var(--muted)">(${names[f][1]})</span>${card}</div>
-      <input type="time" data-f="${f}" value="${esc(v)}">
-      <button class="clr" data-clr="${f}" aria-label="Remove this punch" style="visibility:${v ? "visible" : "hidden"}">✕</button>`;
-  }
   const s = document.getElementById("steps");
-  s.innerHTML = h;
-  if(orderProblem(rec)) s.insertAdjacentHTML("beforeend", `<div class="warn" style="grid-column:1/-1">These times are not in order. Please check them.</div>`);
-  s.querySelectorAll("input[type=time]").forEach(inp => {
-    inp.addEventListener("change", () => {
-      const r2 = todayRec();
-      r2[inp.dataset.f] = inp.value || "";
-      setDay(r2);
-    });
-  });
-  s.querySelectorAll("button[data-clr]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const r2 = todayRec();
-      r2[btn.dataset.clr] = "";
-      if(FIELDS.every(f => !r2[f]) && !r2.note) removeDay(r2.date); else setDay(r2);
-    });
+  s.innerHTML = FIELDS.map(f => timeFieldHtml("t_" + f, names[f][0], names[f][1], rec[f])).join("");
+  if(orderProblem(rec)) s.insertAdjacentHTML("beforeend", `<div class="warn">These times are not in order. Please check them.</div>`);
+  initTimeFields(s, null, (input, v) => {
+    const r2 = todayRec();
+    r2[input.id.slice(2)] = v;
+    if(FIELDS.every(f => !r2[f]) && !r2.note) removeDay(r2.date); else setDay(r2);
   });
 }
 
@@ -1103,21 +1230,26 @@ function openEditor(k){
   const isNew = !k;
   const rec = k && days[k] ? Object.assign({}, days[k]) : {date: k || todayKey(), in1:"", out1:"", in2:"", out2:"", note:"", adp:""};
   const host = document.getElementById("modalHost");
-  const row = (f,label) => `<div class="row"><span>${label}</span><span><input type="time" id="e_${f}" value="${esc(rec[f])}"><button class="clr" data-eclr="${f}" aria-label="Remove this punch">✕</button></span></div>`;
+  const names = {in1:["Punch IN","start of day"], out1:["Punch OUT","lunch"], in2:["Punch IN","after lunch"], out2:["Punch OUT","end of day"]};
+  const timeRows = recIn => FIELDS.map(f => timeFieldHtml("e_" + f, names[f][0], names[f][1], recIn[f])).join("");
   host.innerHTML = `<div class="modal-bg"><div class="modal">
     <h3>${isNew ? "Add or edit any day" : prettyDate(rec.date)}</h3>
-    <div class="row"><span>Date</span><input type="date" id="e_date" value="${esc(rec.date)}"></div>
-    ${row("in1","Punch IN (start)")}${row("out1","Punch OUT (lunch)")}${row("in2","Punch IN (after lunch)")}${row("out2","Punch OUT (end)")}
-    <div class="row"><span>ADP daily total (hours)</span><input class="adp" type="text" inputmode="decimal" id="e_adp" value="${esc(rec.adp == null ? "" : rec.adp)}" placeholder="0.00"></div>
-    <div style="margin-top:8px"><span>Note</span><input type="text" id="e_note" style="width:100%;margin-top:4px" placeholder="e.g. forgot to punch, doctor visit" value="${esc(rec.note)}"></div>
+    <div class="field"><label for="e_date">Date</label><input type="date" id="e_date" value="${esc(rec.date)}"></div>
+    <div id="e_times">${timeRows(rec)}</div>
+    <div class="field"><label for="e_adp">ADP daily total (hours)</label>
+      <input type="text" inputmode="decimal" id="e_adp" value="${esc(rec.adp == null ? "" : rec.adp)}" placeholder="e.g. 8.00"></div>
+    <div class="field"><label for="e_note">Note</label>
+      <input type="text" id="e_note" placeholder="e.g. forgot to punch, doctor visit" value="${esc(rec.note)}"></div>
     <div id="e_preview" class="note" style="margin-top:10px"></div>
     <div class="actions">
-      <div>${isNew ? "" : `<button class="btn danger" id="e_del">Delete day</button>`}</div>
-      <div style="display:flex;gap:8px"><button class="btn" id="e_cancel">Cancel</button><button class="btn solid" id="e_save">Save</button></div>
+      <button class="btn solid save" id="e_save">Save</button>
+      ${isNew ? "" : `<button class="btn danger" id="e_del">Delete day</button>`}
+      <button class="btn${isNew ? " wide" : ""}" id="e_cancel">Cancel</button>
     </div>
     <div id="e_confirm"></div>
   </div></div>`;
-  const val = f => document.getElementById("e_" + f).value || "";
+  const timeVal = f => readTimeField(document.getElementById("e_" + f));
+  const val = f => timeVal(f).ok ? timeVal(f).v : "";
   const read = () => ({
     date: document.getElementById("e_date").value,
     in1: val("in1"), out1: val("out1"), in2: val("in2"), out2: val("out2"),
@@ -1135,24 +1267,31 @@ function openEditor(k){
     document.getElementById("e_preview").innerHTML = t;
   };
   if(isNew){
+    // picking another date loads that day's saved times
     document.getElementById("e_date").addEventListener("change", () => {
       const d = document.getElementById("e_date").value;
       const src = days[d] || {};
-      FIELDS.forEach(f => document.getElementById("e_"+f).value = src[f] || "");
+      document.getElementById("e_times").innerHTML = timeRows(src);
+      initTimeFields(document.getElementById("e_times"), preview);
       document.getElementById("e_note").value = src.note || "";
       document.getElementById("e_adp").value = src.adp || "";
       preview();
     });
   }
-  host.querySelectorAll("input").forEach(i => i.addEventListener("input", preview));
-  host.querySelectorAll("button[data-eclr]").forEach(b => b.addEventListener("click", () => {
-    document.getElementById("e_" + b.dataset.eclr).value = "";
-    preview();
-  }));
+  initTimeFields(document.getElementById("e_times"), preview);
+  ["e_adp", "e_note"].forEach(id => document.getElementById(id).addEventListener("input", preview));
   preview();
   const close = () => { host.innerHTML = ""; };
   document.getElementById("e_cancel").onclick = close;
   document.getElementById("e_save").onclick = () => {
+    const badField = FIELDS.find(f => !timeVal(f).ok);
+    if(badField){
+      const inp = document.getElementById("e_" + badField);
+      inp.focus();
+      inp.blur();     // shows the error message under the field
+      inp.focus();
+      return;
+    }
     const r2 = read();
     if(!/^\d{4}-\d\d-\d\d$/.test(r2.date)) return;
     if(!isNew && r2.date !== rec.date) removeDay(rec.date);
@@ -1190,7 +1329,8 @@ function renderAll(){
   document.getElementById("todayLabel").textContent = prettyDate(todayKey());
   document.getElementById("clock").textContent = fmtClock(nowMin());
   renderAdvice(); renderTodayStats();
-  if(!document.activeElement || document.activeElement.type !== "time") renderSteps();
+  const typing = document.activeElement && document.getElementById("steps").contains(document.activeElement);
+  if(!typing) renderSteps();
   renderHistory();
   renderBackupStatus();
   reopenInfos();
