@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.3 (2026-11-08)
+  Version : 1.4.4 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -54,6 +54,9 @@
     1.4.3  2026-11-08  Mickael Cauberghs  "Delete this day?" now opens in the
                        middle of the screen with the focus on it (it was
                        hidden below the buttons on my phone).
+    1.4.4  2026-11-08  Mickael Cauberghs  Faster updates: the app always asks
+                       GitHub for the newest version and reloads itself once
+                       when a new version is installed.
   ============================================================================
 -->
 <html lang="en">
@@ -331,7 +334,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.3 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.4 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -348,7 +351,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.3";
+const APP_VERSION = "1.4.4";
 const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -1481,8 +1484,22 @@ initStore();
 
 // Mickael Cauberghs, 2026-11-07: the service worker keeps a copy of the app
 // on the phone so it opens without internet (for example inside the building).
+// Mickael Cauberghs, 2026-11-08 (v1.4.4): check for a new version every time
+// the app opens or comes back to the screen, and reload once when it arrives.
 if("serviceWorker" in navigator){
-  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if(!hadController || reloading) return;   // first install: nothing to reload
+    reloading = true;
+    location.reload();
+  });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if(!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
 }
 })();
 </script>
