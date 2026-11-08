@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.1 (2026-11-08)
+  Version : 1.4.2 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -48,6 +48,9 @@
                        edit any day" window: one aligned line per punch.
     1.4.1  2026-11-08  Mickael Cauberghs  Fix: "Today's punches" were side by
                        side and went off the screen; now one punch per line.
+    1.4.2  2026-11-08  Mickael Cauberghs  Clearer "Delete day": the button
+                       also shows in "Add or edit any day", the question
+                       replaces the buttons, and Undo after deleting.
   ============================================================================
 -->
 <html lang="en">
@@ -161,7 +164,12 @@
   .terr:empty{display:none}
   .modal .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
   .modal .actions .btn{height:48px;padding:0 12px;border-radius:12px;font-size:16px;font-weight:600}
-  .modal .actions .save,.modal .actions .wide{grid-column:1 / -1}
+  .modal .actions .save,.modal .actions .wide,.modal .actions .confirm{grid-column:1 / -1}
+  .modal .actions .confirm{background:var(--red-bg);border-radius:12px;padding:12px;font-size:15px}
+  .btn.danger-solid{background:var(--red);border-color:var(--red);color:#fff}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:14px;
+    background:#1d2330;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);width:max-content;max-width:92vw}
+  .toast button{background:none;border:0;color:#7fb0ff;font-weight:800;font-size:16px;cursor:pointer;padding:4px 6px}
   .status{font-size:13px;color:var(--muted);margin-top:18px;text-align:center}
   textarea{width:100%;height:140px;font:13px monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px}
   .hidden{display:none}
@@ -309,11 +317,12 @@
 
 <div id="modalHost"></div>
 <div id="alarmHost"></div>
+<div id="toastHost"></div>
 
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.1 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.2 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -330,7 +339,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -1242,12 +1251,7 @@ function openEditor(k){
     <div class="field"><label for="e_note">Note</label>
       <input type="text" id="e_note" placeholder="e.g. forgot to punch, doctor visit" value="${esc(rec.note)}"></div>
     <div id="e_preview" class="note" style="margin-top:10px"></div>
-    <div class="actions">
-      <button class="btn solid save" id="e_save">Save</button>
-      ${isNew ? "" : `<button class="btn danger" id="e_del">Delete day</button>`}
-      <button class="btn${isNew ? " wide" : ""}" id="e_cancel">Cancel</button>
-    </div>
-    <div id="e_confirm"></div>
+    <div class="actions" id="e_actions"></div>
   </div></div>`;
   const timeVal = f => readTimeField(document.getElementById("e_" + f));
   const val = f => timeVal(f).ok ? timeVal(f).v : "";
@@ -1277,14 +1281,15 @@ function openEditor(k){
       document.getElementById("e_note").value = src.note || "";
       document.getElementById("e_adp").value = src.adp || "";
       preview();
+      drawActions();
     });
   }
   initTimeFields(document.getElementById("e_times"), preview);
   ["e_adp", "e_note"].forEach(id => document.getElementById(id).addEventListener("input", preview));
   preview();
   const close = () => { host.innerHTML = ""; };
-  document.getElementById("e_cancel").onclick = close;
-  document.getElementById("e_save").onclick = () => {
+
+  const save = () => {
     const badField = FIELDS.find(f => !timeVal(f).ok);
     if(badField){
       const inp = document.getElementById("e_" + badField);
@@ -1300,12 +1305,61 @@ function openEditor(k){
     else setDay(r2);
     close();
   };
-  const del = document.getElementById("e_del");
-  if(del) del.onclick = () => {
-    document.getElementById("e_confirm").innerHTML = `<div class="warn">Delete ${prettyDate(rec.date)}? <button class="btn danger" id="e_yes">Yes, delete</button> <button class="btn" id="e_no">No</button></div>`;
-    document.getElementById("e_yes").onclick = () => { removeDay(rec.date); close(); };
-    document.getElementById("e_no").onclick = () => { document.getElementById("e_confirm").innerHTML = ""; };
-  };
+
+  // Mickael Cauberghs, 2026-11-08 (v1.4.2): deleting a practice day was not
+  // clear: the "Are you sure?" question showed below the buttons (often off
+  // the screen), and "Add or edit any day" had no Delete button. Now the
+  // Delete button shows whenever the chosen day has saved data, the question
+  // replaces the buttons where I tapped, and an Undo button follows.
+  /** The day the Delete button removes: the day shown in the window. */
+  const targetDay = () => isNew ? document.getElementById("e_date").value : rec.date;
+
+  function drawActions(){
+    const box = document.getElementById("e_actions");
+    const canDelete = !!days[targetDay()];
+    box.innerHTML = `<button class="btn solid save" id="e_save">Save</button>
+      ${canDelete ? `<button class="btn danger" id="e_del">Delete day</button>` : ""}
+      <button class="btn${canDelete ? "" : " wide"}" id="e_cancel">Cancel</button>`;
+    document.getElementById("e_save").onclick = save;
+    document.getElementById("e_cancel").onclick = close;
+    if(canDelete) document.getElementById("e_del").onclick = askDelete;
+  }
+
+  function askDelete(){
+    const k = targetDay();
+    const box = document.getElementById("e_actions");
+    box.innerHTML = `<div class="confirm">
+        <b>Delete ${prettyDate(k)}?</b><br>All its punches, the ADP total and the note will be removed.
+      </div>
+      <button class="btn solid danger-solid" id="e_yes">Yes, delete</button>
+      <button class="btn" id="e_no">No, keep it</button>`;
+    box.scrollIntoView({ block: "end", behavior: "smooth" });
+    document.getElementById("e_no").onclick = drawActions;
+    document.getElementById("e_yes").onclick = () => {
+      const removed = days[k];
+      removeDay(k);
+      close();
+      showToast(prettyDate(k) + " deleted.", "Undo", () => {
+        days[k] = removed;
+        markChanged();
+        saveLocal();
+        renderAll();
+      });
+    };
+  }
+
+  drawActions();
+}
+
+/** Short message at the bottom of the screen, with an optional button (e.g. Undo). */
+let toastTimer = null;
+function showToast(message, actionLabel, onAction){
+  const host = document.getElementById("toastHost");
+  host.innerHTML = `<div class="toast"><span>${esc(message)}</span>${actionLabel ? `<button id="toastBtn">${esc(actionLabel)}</button>` : ""}</div>`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { host.innerHTML = ""; }, 8000);
+  const btn = document.getElementById("toastBtn");
+  if(btn) btn.onclick = () => { clearTimeout(toastTimer); host.innerHTML = ""; onAction(); };
 }
 
 function copyTable(){
