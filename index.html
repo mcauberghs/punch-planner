@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.2 (2026-11-08)
+  Version : 1.4.3 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -51,6 +51,9 @@
     1.4.2  2026-11-08  Mickael Cauberghs  Clearer "Delete day": the button
                        also shows in "Add or edit any day", the question
                        replaces the buttons, and Undo after deleting.
+    1.4.3  2026-11-08  Mickael Cauberghs  "Delete this day?" now opens in the
+                       middle of the screen with the focus on it (it was
+                       hidden below the buttons on my phone).
   ============================================================================
 -->
 <html lang="en">
@@ -164,9 +167,14 @@
   .terr:empty{display:none}
   .modal .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
   .modal .actions .btn{height:48px;padding:0 12px;border-radius:12px;font-size:16px;font-weight:600}
-  .modal .actions .save,.modal .actions .wide,.modal .actions .confirm{grid-column:1 / -1}
-  .modal .actions .confirm{background:var(--red-bg);border-radius:12px;padding:12px;font-size:15px}
+  .modal .actions .save,.modal .actions .wide{grid-column:1 / -1}
   .btn.danger-solid{background:var(--red);border-color:var(--red);color:#fff}
+  .confirm-bg{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+  .confirm-box{background:var(--card);color:var(--ink);border-radius:16px;padding:20px;width:100%;max-width:360px;box-shadow:0 10px 30px rgba(0,0,0,.35);outline:none}
+  .confirm-box h3{margin:0 0 8px;font-size:20px}
+  .confirm-box p{margin:0 0 16px;color:var(--muted)}
+  .confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .confirm-actions .btn{height:48px;border-radius:12px;font-size:16px;font-weight:700}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:14px;
     background:#1d2330;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);width:max-content;max-width:92vw}
   .toast button{background:none;border:0;color:#7fb0ff;font-weight:800;font-size:16px;cursor:pointer;padding:4px 6px}
@@ -318,11 +326,12 @@
 <div id="modalHost"></div>
 <div id="alarmHost"></div>
 <div id="toastHost"></div>
+<div id="confirmHost"></div>
 
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.2 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.3 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -339,7 +348,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -1327,28 +1336,50 @@ function openEditor(k){
 
   function askDelete(){
     const k = targetDay();
-    const box = document.getElementById("e_actions");
-    box.innerHTML = `<div class="confirm">
-        <b>Delete ${prettyDate(k)}?</b><br>All its punches, the ADP total and the note will be removed.
-      </div>
-      <button class="btn solid danger-solid" id="e_yes">Yes, delete</button>
-      <button class="btn" id="e_no">No, keep it</button>`;
-    box.scrollIntoView({ block: "end", behavior: "smooth" });
-    document.getElementById("e_no").onclick = drawActions;
-    document.getElementById("e_yes").onclick = () => {
-      const removed = days[k];
-      removeDay(k);
-      close();
-      showToast(prettyDate(k) + " deleted.", "Undo", () => {
-        days[k] = removed;
-        markChanged();
-        saveLocal();
-        renderAll();
-      });
-    };
+    confirmDialog({
+      title: "Delete " + prettyDate(k) + "?",
+      text: "All its punches, the ADP total and the note will be removed.",
+      yes: "Yes, delete",
+      no: "No, keep it",
+      onYes: () => {
+        const removed = days[k];
+        removeDay(k);
+        close();
+        showToast(prettyDate(k) + " deleted.", "Undo", () => {
+          days[k] = removed;
+          markChanged();
+          saveLocal();
+          renderAll();
+        });
+      }
+    });
   }
 
   drawActions();
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-08 (v1.4.3): a question that opens in the middle
+ * of the screen, on top of everything, with the focus on it. On my phone the
+ * old question appeared below the buttons, off the screen, and I could not
+ * see it.
+ * @param {{title:string, text:string, yes:string, no:string, onYes:function}} o
+ */
+function confirmDialog(o){
+  const host = document.getElementById("confirmHost");
+  host.innerHTML = `<div class="confirm-bg"><div class="confirm-box" role="alertdialog" aria-modal="true"
+      aria-labelledby="cfTitle" aria-describedby="cfText" tabindex="-1">
+      <h3 id="cfTitle">${esc(o.title)}</h3>
+      <p id="cfText">${esc(o.text)}</p>
+      <div class="confirm-actions">
+        <button class="btn" id="cfNo">${esc(o.no)}</button>
+        <button class="btn solid danger-solid" id="cfYes">${esc(o.yes)}</button>
+      </div></div></div>`;
+  const shut = () => { host.innerHTML = ""; };
+  document.getElementById("cfNo").onclick = shut;
+  document.getElementById("cfYes").onclick = () => { shut(); o.onYes(); };
+  host.querySelector(".confirm-bg").addEventListener("click", ev => { if(ev.target.classList.contains("confirm-bg")) shut(); });
+  host.querySelector(".confirm-box").focus();
 }
 
 /** Short message at the bottom of the screen, with an optional button (e.g. Undo). */
