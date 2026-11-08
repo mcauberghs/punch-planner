@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.4 (2026-11-08)
+  Version : 1.4.5 (2026-11-08)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -57,6 +57,9 @@
     1.4.4  2026-11-08  Mickael Cauberghs  Faster updates: the app always asks
                        GitHub for the newest version and reloads itself once
                        when a new version is installed.
+    1.4.5  2026-11-08  Mickael Cauberghs  "Check vs ADP" table fits on my
+                       phone (the ✓/✗ column was cut off); the summary box
+                       says "Matches ADP" when all days match.
   ============================================================================
 -->
 <html lang="en">
@@ -118,6 +121,10 @@
   .clr{border:0;background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:6px 8px}
   .banner{background:var(--amber-bg);border-radius:12px;padding:12px;margin:12px 0;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
   .ok{color:var(--green);font-weight:700} .bad{color:var(--red);font-weight:700}
+  /* v1.4.5: narrower Check vs ADP table so the ✓/✗ column fits on a phone */
+  table.recon th,table.recon td{padding:8px 3px}
+  table.recon td:last-child,table.recon th:last-child{width:34px;text-align:center}
+  table.recon input.adp{width:50px;padding:6px 4px}
   input.adp{width:64px;font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);text-align:right}
   .h2row{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .toggle{font-size:14px}
@@ -334,7 +341,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.4 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.5 (2026-11-08) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -351,7 +358,7 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.4";
+const APP_VERSION = "1.4.5";
 const APP_DATE = "2026-11-08";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
@@ -1203,7 +1210,7 @@ function renderHistory(){
     const wk = mondayOf(k);
     if(wk !== curWeek){ flushWeek(); curWeek = wk; wR = 0; wC = 0; wA = 0; }
     wR += c.real; wC += c.card; R += c.real; C += c.card; if(c.real>0) n++;
-    const label = `${recon ? shortDate(k) : prettyDate(k)}${rec.note?" 📝":""}`;
+    const label = recon ? shortDate(k) : `${prettyDate(k)}${rec.note ? " 📝" : ""}`;
     if(recon){
       const a = adpMinutes(rec);
       let check = `<span class="note">?</span>`;
@@ -1225,16 +1232,17 @@ function renderHistory(){
 
   const cols = recon ? 5 : 9;
   const head = recon
-    ? `<thead><tr><th>Day</th><th>Real</th><th>Card</th><th>ADP</th><th>✓/✗</th></tr></thead>`
+    ? `<thead><tr><th>Day</th><th>Real</th><th>Card</th><th>ADP</th><th>✓</th></tr></thead>`
     : `<thead><tr><th>Day</th><th>In</th><th>Out</th><th>In</th><th>Out</th><th>Lunch</th><th>Real</th><th>Card</th><th>Card vs real</th></tr></thead>`;
   const foot = !keys.length ? "" : recon
     ? `<tfoot><tr><td>Total</td><td>${fmtDur(R)}</td><td>${fmtHrs(C)}</td><td>${fmtHrs(A)}</td><td>${aDays ? (bad ? `<span class="bad">${bad} ✗</span>` : `<span class="ok">✓</span>`) : ""}</td></tr></tfoot>`
     : `<tfoot><tr><td>Total (${n} days)</td><td colspan="5"></td><td>${fmtDur(R)}</td><td>${fmtHrs(C)}</td><td class="${C-R>=0?"pos":"neg"}">${fmtDiff(C-R)}</td></tr></tfoot>`;
+  document.getElementById("histTable").className = recon ? "recon" : "";
   document.getElementById("histTable").innerHTML = head + "<tbody>" +
     (body || `<tr><td colspan="${cols}" style="text-align:center;color:var(--muted);cursor:default">No days in this period.</td></tr>`) + "</tbody>" + foot;
 
   document.getElementById("rangeStats").innerHTML = recon
-    ? stat(fmtHrs(C), "Card (app)") + stat(aDays ? fmtHrs(A) : "—", "ADP") + stat(aDays ? (bad ? bad + " ✗" : "All ✓") : "—", "Days different", bad ? "neg" : "pos")
+    ? stat(fmtHrs(C), "Card (app)") + stat(aDays ? fmtHrs(A) : "—", "ADP") + stat(aDays ? (bad ? bad + " ✗" : "All ✓") : "—", bad ? "Days different" : "Matches ADP", bad ? "neg" : "pos")
     : stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
 
   document.querySelectorAll("#histTable tbody tr[data-k]").forEach(tr => tr.addEventListener("click", ev => {

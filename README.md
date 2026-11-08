@@ -1,6 +1,6 @@
 # Punch Planner
 
-**Version 1.4.4 (2026-11-08)** · Author: Mickael Cauberghs
+**Version 1.4.5 (2026-11-08)** · Author: Mickael Cauberghs
 
 A small Android app (installable web app) that tells me the best time to punch
 in and out on the ADP timecard, so I work a real 8:00 per day, take a real
@@ -62,3 +62,4 @@ with internet: it finds the new version and reloads itself once.
 | 1.4.2   | 2026-11-08 | Mickael Cauberghs  | Clearer Delete day (also in Add or edit any day), confirmation in place, Undo |
 | 1.4.3   | 2026-11-08 | Mickael Cauberghs  | Delete question opens in the middle of the screen, with focus |
 | 1.4.4   | 2026-11-08 | Mickael Cauberghs  | Faster updates: always checks GitHub for the newest version, reloads itself |
+| 1.4.5   | 2026-11-08 | Mickael Cauberghs  | Check vs ADP table fits on the phone; "Matches ADP" label |
