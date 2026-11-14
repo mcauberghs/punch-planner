@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.6 (2026-11-13)
+  Version : 1.5.0 (2026-11-14)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -64,6 +64,11 @@
                        backup is now a .txt file (Android cannot share .json).
                        If sharing still fails, a Copy button lets me paste the
                        backup into an email. Restore reads .txt and .json.
+    1.5.0  2026-11-14  Mickael Cauberghs  Weekly 40-hour plan (card hours
+                       left, per workday); "Staying late" advice (next good
+                       minute to punch out); short-lunch warning (under 30
+                       min); "Pay period" search buttons (2 weeks); "Import
+                       from ADP" (paste the timecard, fills missing punches).
   ============================================================================
 -->
 <html lang="en">
@@ -126,6 +131,8 @@
   .banner{background:var(--amber-bg);border-radius:12px;padding:12px;margin:12px 0;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
   .ok{color:var(--green);font-weight:700} .bad{color:var(--red);font-weight:700}
   /* v1.4.5: narrower Check vs ADP table so the ✓/✗ column fits on a phone */
+  table.import td,table.import th{text-align:left;white-space:normal;padding:8px 4px;vertical-align:top}
+  table.import tbody tr{cursor:default}
   table.recon th,table.recon td{padding:8px 3px}
   table.recon td:last-child,table.recon th:last-child{width:34px;text-align:center}
   table.recon input.adp{width:50px;padding:6px 4px}
@@ -262,8 +269,13 @@
     </div>
 
     <div class="card">
-      <h2>This week (Mon–Sun)</h2>
+      <h2>This week (Mon–Sun) <button class="info" data-info="iWeek" aria-label="About the 40-hour plan">i</button></h2>
+      <div id="iWeek" class="infobox hidden">
+        The plan line shows how many <b>card hours</b> are left to reach <b>40.00</b> this week, and how many
+        that is per workday (Monday to Friday). Above 40.00 the extra time may be overtime, so check with your manager.
+      </div>
       <div class="stats" id="weekStats"></div>
+      <div id="weekPlan" class="note" style="margin-top:10px"></div>
       <div id="weekWarn"></div>
     </div>
   </section>
@@ -279,6 +291,8 @@
         <button data-q="day">Today</button>
         <button data-q="week">This week</button>
         <button data-q="lastweek">Last week</button>
+        <button data-q="period">Pay period</button>
+        <button data-q="lastperiod">Last pay period</button>
         <button data-q="month">This month</button>
         <button data-q="lastmonth">Last month</button>
         <button data-q="all">All</button>
@@ -306,6 +320,7 @@
       <p class="note">Tap a day to edit, add a note, or delete it. <button class="info" data-info="iHist" aria-label="More info">i</button></p>
       <div id="iHist" class="infobox hidden">
         <b>Real</b> = your real time. <b>Card</b> = what the timecard counts. 📝 = the day has a note.
+        A lunch in red with ⚠ was shorter than 30 minutes.
         Use <b>Delete day</b> to remove a test or demo day, or ✕ next to one punch to remove only that punch.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -313,6 +328,18 @@
         <button class="btn" id="copyBtn">Copy as table (for Excel)</button>
       </div>
       <div id="copyBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Import from ADP <button class="info" data-info="iImport" aria-label="How to import">i</button></h2>
+      <div id="iImport" class="infobox hidden">
+        Open <b>ADP → Myself → My Timecard</b>. Select the timecard (or <b>Select all</b>), <b>Copy</b>, then <b>Paste</b> below.
+        The app reads the dates and the In – Out times. It only <b>fills in what is missing</b>:
+        it never changes a time you recorded yourself. You see the result before anything is saved.
+      </div>
+      <textarea id="importText" placeholder="Paste the ADP timecard here" style="height:90px"></textarea>
+      <div style="margin-top:8px"><button class="btn solid" id="importCheckBtn">Check pasted timecard</button></div>
+      <div id="importResult" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
@@ -345,7 +372,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.6 (2026-11-13) - Mickael Cauberghs
+ * Version 1.5.0 (2026-11-14) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -362,8 +389,8 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.6";
-const APP_DATE = "2026-11-13";
+const APP_VERSION = "1.5.0";
+const APP_DATE = "2026-11-14";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
 const WEEK_LIMIT = 2400;  // 40:00 card hours per week, in minutes
@@ -374,6 +401,10 @@ const ALARM_KEY = "punchPlanner.alarm.v1"; // today's alarm state (not in backup
 const GENTLE_LEAD = 3;    // gentle alarm: minutes before the best punch-in time
 const URGENT_AT = 55;     // urgent alarm: minutes of real lunch
 const SNOOZES = [5, 10, 15, 20];
+// Mickael Cauberghs, 2026-11-14 (v1.5.0): my pay periods are 2 weeks long and
+// start on a Monday. PAY_ANCHOR is the first day of one pay period.
+const PAY_ANCHOR = "2026-11-02";
+const PAY_DAYS = 14;
 const FIELDS = ["in1", "out1", "in2", "out2"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -639,6 +670,36 @@ function weekTotals(k){
   return {real, card, n};
 }
 
+/** Workdays (Mon-Fri) from day k to Friday that are not finished yet. */
+function workdaysLeft(k){
+  const mon = mondayOf(k);
+  let n = 0;
+  for(let i = 0; i < 5; i++){
+    const d = addDays(mon, i);
+    if(d >= k && !(days[d] && days[d].out2)) n++;
+  }
+  return n;
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-14 (v1.5.0): weekly 40-hour plan. I went over
+ * 40 card hours in my first two weeks (40.50 and 41.50) without planning it.
+ * This line tells me, from Monday on, how many card hours are left to reach
+ * exactly 40.00 and how many that is per workday.
+ */
+function weekPlanHtml(k){
+  const mon = mondayOf(k);
+  let done = 0;
+  for(let i = 0; i < 7; i++){
+    const r = days[addDays(mon, i)];
+    if(r && r.out2) done += calc(r).card;      // finished days only
+  }
+  const left = WEEK_LIMIT - done, n = workdaysLeft(k);
+  if(left <= 0 || n === 0) return "";
+  return `To reach <b>40.00</b> this week: <b>${fmtHrs(left)}</b> card hours in <b>${n}</b> workday${n > 1 ? "s" : ""}` +
+    (n > 1 ? ` (about <b>${fmtHrs(left / n)}</b> per day).` : ` (today).`);
+}
+
 function renderAdvice(){
   const rec = todayRec(), now = nowMin();
   const a=toMin(rec.in1), b=toMin(rec.out1), c=toMin(rec.in2), e=toMin(rec.out2);
@@ -741,8 +802,21 @@ function renderAdvice(){
     } else {
       const realNow = morningReal + (now - c), cardNow = cardMorning + (rnd(now) - rnd(c));
       cls = "go";
-      html = `<div class="label">Overtime today${colorInfo}</div><div class="big">Punch OUT now</div>
-        <div class="sub">Now counts as <b>${fmtClock(rnd(now))}</b>. Real work: <b>${fmtDur(realNow)}</b> · Card: <b>${fmtHrs(cardNow)}</b>.</div>`;
+      // Mickael Cauberghs, 2026-11-14 (v1.5.0): on Tue 11/10 I stayed late,
+      // punched out at 5:52 (counts as 5:45) and lost 7 minutes. When I stay
+      // past the good window, the app now shows the next good minute.
+      if(r >= 8){
+        const up = now + (15 - r);
+        html = `<div class="label">Staying late${colorInfo}</div><div class="big">Good time to punch OUT</div>
+          <div class="sub">Now counts as <b>${fmtClock(up)}</b>. Good until <b>${fmtClock(up - 1)}</b>.
+          Real work: <b>${fmtDur(realNow)}</b> · Card: <b>${fmtHrs(cardNow)}</b>.</div>`;
+      }else{
+        const next = now - r + 8;
+        html = `<div class="label">Staying late${colorInfo}</div><div class="big">${r === 0 ? "Punch OUT now" : "Wait until " + fmtClock(next)}</div>
+          <div class="sub">${r === 0 ? `Now counts as <b>${fmtClock(now)}</b> exactly.` :
+            `If you punch now, it counts as <b>${fmtClock(now - r)}</b> and you lose <b>${r} min</b>. From <b>${fmtClock(next)}</b> it counts as <b>${fmtClock(next + 7)}</b>.`}
+          Real work: <b>${fmtDur(realNow)}</b> · Card now: <b>${fmtHrs(cardNow)}</b>.</div>`;
+      }
     }
     // Mickael Cauberghs, 2026-11-07: in my first week I went over 40 card hours
     // without noticing. This warning shows the window to stay at exactly 40.00.
@@ -761,9 +835,13 @@ function renderAdvice(){
     html = `<div class="label">Day complete</div><div class="big">${fmtDur(cc.real)} real · ${fmtHrs(cc.card)} card</div>
       <div class="sub">Card vs real: <b class="${cc.diff>=0?"pos":"neg"}">${fmtDiff(cc.diff)}</b>${cc.lunch!=null?` · Lunch: ${cc.lunch} min`:""}</div>`;
   }
-  if(nf && nf !== "out2" && nf !== "in1"){
+  if(nf && nf !== "out2"){
     const other = weekOtherCard(rec.date);
-    if(other + TARGET > WEEK_LIMIT) html += `<div class="warn"><b>Heads-up:</b> a full day today puts your card over 40 hours this week (${fmtHrs(other + TARGET)} hrs).</div>`;
+    if(other + TARGET > WEEK_LIMIT){
+      const need = WEEK_LIMIT - other;
+      html += `<div class="warn"><b>Heads-up:</b> a full day today puts your card at ${fmtHrs(other + TARGET)} hours this week. ` +
+        (need > 0 ? `For exactly 40.00 you need only <b>${fmtHrs(need)}</b> card hours today.` : `You are already at 40.00 or more.`) + `</div>`;
+    }
   }
   el.className = "advice " + cls;
   el.innerHTML = html;
@@ -896,6 +974,10 @@ function renderSteps(){
   const s = document.getElementById("steps");
   s.innerHTML = FIELDS.map(f => timeFieldHtml("t_" + f, names[f][0], names[f][1], rec[f])).join("");
   if(orderProblem(rec)) s.insertAdjacentHTML("beforeend", `<div class="warn">These times are not in order. Please check them.</div>`);
+  const lunchToday = calc(rec).lunch;
+  if(lunchToday != null && lunchToday >= 0 && lunchToday < LUNCH){
+    s.insertAdjacentHTML("beforeend", `<div class="warn"><b>Short lunch:</b> ${lunchToday} min. The rule is at least ${LUNCH} real minutes.</div>`);
+  }
   initTimeFields(s, null, (input, v) => {
     const r2 = todayRec();
     r2[input.id.slice(2)] = v;
@@ -923,6 +1005,7 @@ function renderTodayStats(){
   const wr = w.real - stored.real + real, wc = w.card - stored.card + card;
   document.getElementById("weekStats").innerHTML =
     stat(fmtDur(wr), "Real work") + stat(fmtHrs(wc), "Card hours") + stat(fmtDiff(wc-wr), "Card vs real", wc-wr>=0?"pos":"neg");
+  document.getElementById("weekPlan").innerHTML = weekPlanHtml(rec.date);
   document.getElementById("weekWarn").innerHTML = wc > WEEK_LIMIT
     ? `<div class="warn"><b>Over 40 card hours this week</b> (${fmtHrs(wc)}). The extra time may be paid as overtime — check with your manager.</div>` : "";
 }
@@ -1189,12 +1272,21 @@ function updateWakeLock(onLunch){
 const fFrom = () => document.getElementById("fFrom");
 const fTo = () => document.getElementById("fTo");
 
+/** First day of the pay period that contains day k. */
+function payPeriodStart(k){
+  const utc = key => { const [y, m, d] = key.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const diff = Math.round((utc(k) - utc(PAY_ANCHOR)) / 86400000);
+  return addDays(PAY_ANCHOR, Math.floor(diff / PAY_DAYS) * PAY_DAYS);
+}
+
 function setRange(q){
   const t = todayKey(); const d = dateOf(t);
   let from, to;
   if(q==="day"){ from = to = t; }
   else if(q==="week"){ from = mondayOf(t); to = addDays(from,6); }
   else if(q==="lastweek"){ from = addDays(mondayOf(t),-7); to = addDays(from,6); }
+  else if(q==="period"){ from = payPeriodStart(t); to = addDays(from, PAY_DAYS - 1); }
+  else if(q==="lastperiod"){ from = addDays(payPeriodStart(t), -PAY_DAYS); to = addDays(from, PAY_DAYS - 1); }
   else if(q==="month"){ from = keyOf(new Date(d.getFullYear(), d.getMonth(), 1)); to = keyOf(new Date(d.getFullYear(), d.getMonth()+1, 0)); }
   else if(q==="lastmonth"){ from = keyOf(new Date(d.getFullYear(), d.getMonth()-1, 1)); to = keyOf(new Date(d.getFullYear(), d.getMonth(), 0)); }
   else { from = ""; to = ""; }
@@ -1206,6 +1298,9 @@ function rangeKeys(){
   const from = fFrom().value, to = fTo().value;
   return Object.keys(days).filter(k => (!from || k >= from) && (!to || k <= to)).sort();
 }
+
+/** Mickael Cauberghs, 2026-11-14 (v1.5.0): true when a lunch is under the 30-minute rule. */
+function shortLunch(c){ return c.lunch != null && c.lunch >= 0 && c.lunch < LUNCH; }
 
 /** Parse ADP's daily total ("8.25", "8,25") into minutes, or null when empty. */
 function adpMinutes(rec){
@@ -1255,7 +1350,7 @@ function renderHistory(){
     }else{
       const t = f => rec[f] ? fmtClock(toMin(rec[f])) : "—";
       body += `<tr data-k="${k}"><td>${label}</td><td>${t("in1")}</td><td>${t("out1")}</td><td>${t("in2")}</td><td>${t("out2")}</td>
-        <td>${c.lunch!=null?c.lunch+" min":"—"}</td><td>${fmtDur(c.real)}</td><td>${fmtHrs(c.card)}</td>
+        <td${shortLunch(c) ? ' class="neg"' : ""}>${c.lunch != null ? c.lunch + " min" + (shortLunch(c) ? " ⚠" : "") : "—"}</td><td>${fmtDur(c.real)}</td><td>${fmtHrs(c.card)}</td>
         <td class="${c.diff>=0?"pos":"neg"}">${fmtDiff(c.diff)}</td></tr>`;
     }
   }
@@ -1435,6 +1530,129 @@ function showToast(message, actionLabel, onAction){
   if(btn) btn.onclick = () => { clearTimeout(toastTimer); host.innerHTML = ""; onAction(); };
 }
 
+// ---------------------------------------------------------------------------
+// Import from ADP
+// Mickael Cauberghs, 2026-11-14 (v1.5.0): when I forget to tap in the app, I
+// can copy my timecard from the ADP page and paste it here. ADP shows my real
+// punch times in its "In - Out" column, so they can fill the missing punches.
+// Rule: my own times always win; the import only fills empty punches.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read pasted ADP timecard text.
+ * The text is scanned for dates (11/02 or 11/2/2026), times (08:51 AM) and
+ * decimal numbers. Each date starts a row; ADP has two rows per day
+ * (morning, afternoon).
+ * @returns {Object<string,{in1,out1,in2,out2,adp}>} found punches by day
+ */
+function parseAdpText(text){
+  const re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?|(\d{1,2}):(\d{2})\s*([AP])\.?M\b|\d+\.\d{2}\b/gi;
+  const rows = [];
+  let year = null, m;
+  while((m = re.exec(text))){
+    if(m[1] != null){
+      const mo = Number(m[1]), d = Number(m[2]);
+      if(mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      if(m[3]){ const y = Number(m[3]); year = year || (y < 100 ? 2000 + y : y); }
+      rows.push({ mo, d, y: m[3] ? (Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3])) : null, times: [], decs: [] });
+    }else if(m[4] != null){
+      if(!rows.length) continue;
+      let h = Number(m[4]);
+      const mi = Number(m[5]), pm = m[6].toUpperCase() === "P";
+      if(h < 1 || h > 12 || mi > 59) continue;
+      if(pm && h < 12) h += 12;
+      if(!pm && h === 12) h = 0;
+      rows[rows.length - 1].times.push(pad(h) + ":" + pad(mi));
+    }else if(rows.length){
+      rows[rows.length - 1].decs.push(parseFloat(m[0]));
+    }
+  }
+  year = year || new Date().getFullYear();
+  const found = {};
+  for(const row of rows){
+    if(!row.times.length) continue;                 // header dates, empty days
+    const k = (row.y || year) + "-" + pad(row.mo) + "-" + pad(row.d);
+    const day = found[k] || (found[k] = { in1: "", out1: "", in2: "", out2: "", adp: "", rows: 0, hours: 0 });
+    day.rows++;
+    if(day.rows === 1){ day.in1 = row.times[0]; day.out1 = row.times[1] || ""; }
+    else if(day.rows === 2){ day.in2 = row.times[0]; day.out2 = row.times[1] || ""; }
+    // decimals in a row: Hours, [Daily Total], Regular, Overtime, Other
+    if(row.decs.length) day.hours += row.decs[0];
+    if(row.decs.length >= 5 && Math.abs(row.decs[1] - day.hours) < 0.011) day.adp = row.decs[1].toFixed(2);
+  }
+  return found;
+}
+
+/** Compare the pasted punches with my days: what would be added, what differs. */
+function planImport(found){
+  const plan = [];
+  for(const k of Object.keys(found).sort()){
+    const adp = found[k], mine = days[k] || null;
+    const item = { k, adp, isNew: !mine, add: [], differ: [], addAdp: false };
+    for(const f of FIELDS){
+      if(!adp[f]) continue;
+      if(!mine || !mine[f]) item.add.push(f);
+      else if(mine[f] !== adp[f]) item.differ.push(f);
+    }
+    // take ADP's daily total only for a finished day (all 4 punches in ADP)
+    if(adp.adp && adp.out2 && !(mine && mine.adp)) item.addAdp = true;
+    plan.push(item);
+  }
+  return plan;
+}
+
+function checkImport(){
+  const box = document.getElementById("importResult");
+  const plan = planImport(parseAdpText(document.getElementById("importText").value));
+  if(!plan.length){
+    box.innerHTML = `<div class="warn">No punches found. Copy the timecard rows with the dates and the In – Out times, then paste again.</div>`;
+    return;
+  }
+  const t = v => v ? fmtClock(toMin(v)) : "—";
+  let punches = 0, totals = 0, rowsHtml = "";
+  for(const it of plan){
+    punches += it.add.length;
+    if(it.addAdp) totals++;
+    let what;
+    if(it.isNew) what = `<span class="ok">New day</span>`;
+    else if(it.add.length) what = `<span class="ok">Adds ${it.add.length} punch${it.add.length > 1 ? "es" : ""}</span>`;
+    else what = `Same`;
+    if(it.differ.length) what += `<br><span class="bad">${it.differ.length} different: yours kept</span>`;
+    if(it.addAdp) what += `<br><small>ADP total ${esc(it.adp.adp)}</small>`;
+    rowsHtml += `<tr><td>${shortDate(it.k)}</td><td>${t(it.adp.in1)} – ${t(it.adp.out1)}<br>${t(it.adp.in2)} – ${t(it.adp.out2)}</td><td>${what}</td></tr>`;
+  }
+  const todo = punches + totals;
+  box.innerHTML = `<div class="tablewrap"><table class="import"><thead><tr><th>Day</th><th>ADP punches</th><th>Result</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    ${todo ? `<button class="btn solid" id="importApplyBtn" style="margin-top:8px">Add ${punches} missing punch${punches === 1 ? "" : "es"}${totals ? ` and ${totals} ADP total${totals === 1 ? "" : "s"}` : ""}</button>`
+           : `<p class="note">Nothing to add: your days already have these punches.</p>`}`;
+  if(todo) document.getElementById("importApplyBtn").onclick = () => applyImport(plan);
+}
+
+function applyImport(plan){
+  const before = JSON.stringify(days);
+  let punches = 0;
+  for(const it of plan){
+    if(!it.add.length && !it.addAdp) continue;
+    const rec = days[it.k] ? Object.assign({}, days[it.k]) : { date: it.k, in1: "", out1: "", in2: "", out2: "", note: "From ADP timecard" };
+    for(const f of it.add){ rec[f] = it.adp[f]; punches++; }
+    if(it.addAdp) rec.adp = it.adp.adp;
+    rec.updated = Date.now();
+    days[it.k] = rec;
+  }
+  markChanged();
+  saveLocal();
+  renderAll();
+  document.getElementById("importText").value = "";
+  document.getElementById("importResult").innerHTML = `<p class="note">Done: ${punches} punch${punches === 1 ? "" : "es"} added from ADP.</p>`;
+  showToast("Imported from ADP.", "Undo", () => {
+    days = JSON.parse(before);
+    markChanged();
+    saveLocal();
+    renderAll();
+    document.getElementById("importResult").innerHTML = `<p class="note">Import undone.</p>`;
+  });
+}
+
 function copyTable(){
   const keys = rangeKeys();
   const lines = [["Date","In","Out (lunch)","In (lunch)","Out","Lunch min","Real h:mm","Card hrs","Card vs real min","ADP hrs","Note"].join("\t")];
@@ -1475,6 +1693,7 @@ document.getElementById("mainBtn").onclick = punchNow;
 document.getElementById("undoBtn").onclick = undo;
 document.getElementById("addDayBtn").onclick = () => openEditor(null);
 document.getElementById("copyBtn").onclick = copyTable;
+document.getElementById("importCheckBtn").onclick = checkImport;
 document.getElementById("backupBtn").onclick = saveBackup;
 document.getElementById("shareBtn").onclick = shareBackup;
 document.getElementById("restoreInput").addEventListener("change", ev => {

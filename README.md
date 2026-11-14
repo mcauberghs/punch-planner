@@ -1,6 +1,6 @@
 # Punch Planner
 
-**Version 1.4.6 (2026-11-13)** · Author: Mickael Cauberghs
+**Version 1.5.0 (2026-11-14)** · Author: Mickael Cauberghs
 
 A small Android app (installable web app) that tells me the best time to punch
 in and out on the ADP timecard, so I work a real 8:00 per day, take a real
@@ -23,6 +23,8 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 - History with search by day, week, month or custom dates
 - Edit a day, add notes, copy a period for Excel
 - Check vs ADP: type ADP's daily total, see ✓ or ✗ per day
+- Import from ADP: paste the timecard, the app fills only the missing punches
+- Weekly 40-hour plan and "staying late" advice; short-lunch warning; pay period search
 - Lunch alarms: gentle chime with snooze 5/10/15/20 min (new best time shown), urgent red alarm at 55 min, stop for the day
 - (i) buttons show details only when needed
 - Works offline; data saved on the phone; share/save/restore a backup file, daily backup reminder
@@ -64,3 +66,4 @@ with internet: it finds the new version and reloads itself once.
 | 1.4.4   | 2026-11-08 | Mickael Cauberghs  | Faster updates: always checks GitHub for the newest version, reloads itself |
 | 1.4.5   | 2026-11-08 | Mickael Cauberghs  | Check vs ADP table fits on the phone; "Matches ADP" label |
 | 1.4.6   | 2026-11-13 | Mickael Cauberghs  | Send backup works on Android (.txt file); Copy fallback; restore reads .txt and .json |
+| 1.5.0   | 2026-11-14 | Mickael Cauberghs  | Weekly 40-hour plan, staying-late advice, short-lunch warning, pay period search, import from ADP |
