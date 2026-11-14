@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.4.5 (2026-11-08)
+  Version : 1.4.6 (2026-11-13)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -60,6 +60,10 @@
     1.4.5  2026-11-08  Mickael Cauberghs  "Check vs ADP" table fits on my
                        phone (the ✓/✗ column was cut off); the summary box
                        says "Matches ADP" when all days match.
+    1.4.6  2026-11-13  Mickael Cauberghs  Fix "Send backup" on Android: the
+                       backup is now a .txt file (Android cannot share .json).
+                       If sharing still fails, a Copy button lets me paste the
+                       backup into an email. Restore reads .txt and .json.
   ============================================================================
 -->
 <html lang="en">
@@ -324,7 +328,7 @@
         <button class="btn solid" id="shareBtn">Send backup (email, Drive…)</button>
         <button class="btn" id="backupBtn">Save backup file</button>
         <label class="btn" for="restoreInput" style="cursor:pointer">Restore from backup</label>
-        <input type="file" id="restoreInput" accept=".json,application/json" class="hidden">
+        <input type="file" id="restoreInput" accept=".txt,.json,text/plain,application/json" class="hidden">
       </div>
       <div id="backupMsg" class="note" style="margin-top:8px"></div>
     </div>
@@ -341,7 +345,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.4.5 (2026-11-08) - Mickael Cauberghs
+ * Version 1.4.6 (2026-11-13) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -358,8 +362,8 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.4.5";
-const APP_DATE = "2026-11-08";
+const APP_VERSION = "1.4.6";
+const APP_DATE = "2026-11-13";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
 const WEEK_LIMIT = 2400;  // 40:00 card hours per week, in minutes
@@ -512,14 +516,18 @@ async function initStore(){
 
 /**
  * Mickael Cauberghs, 2026-11-07: build the backup file with all my days,
- * named PunchPlanner_Backup_YYYYMMDD_HHMM.json (my file-naming rule).
+ * named PunchPlanner_Backup_YYYYMMDD_HHMM.txt (my file-naming rule).
  */
 function buildBackupFile(){
   const d = new Date();
   const stamp = d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + "_" + pad(d.getHours()) + pad(d.getMinutes());
   const payload = { app: "Punch Planner", version: APP_VERSION, saved: d.toISOString(), days: days };
-  const name = "PunchPlanner_Backup_" + stamp + ".json";
-  return new File([JSON.stringify(payload, null, 2)], name, { type: "application/json" });
+  // Mickael Cauberghs, 2026-11-13 (v1.4.6): Android Chrome refuses to share
+  // .json files, so "Send backup" did nothing on my phone. The backup is now
+  // a .txt file (same content, plain text) that Android can share. Restore
+  // still accepts my older .json backups.
+  const name = "PunchPlanner_Backup_" + stamp + ".txt";
+  return new File([JSON.stringify(payload, null, 2)], name, { type: "text/plain" });
 }
 
 /** Save the backup file into the phone's Downloads folder. */
@@ -546,17 +554,40 @@ function saveBackup(){
 async function shareBackup(){
   const file = buildBackupFile();
   const msg = document.getElementById("backupMsg");
-  if(navigator.canShare && navigator.canShare({ files: [file] })){
+  const count = Object.keys(days).length;
+  // 1) best: share the file (Gmail, Drive...)
+  if(navigator.share && navigator.canShare && navigator.canShare({ files: [file] })){
     try{
-      await navigator.share({ files: [file], title: file.name, text: "Punch Planner backup (" + Object.keys(days).length + " days)" });
+      await navigator.share({ files: [file], title: file.name, text: "Punch Planner backup (" + count + " days)" });
       markBackedUp();
       msg.textContent = "Sent: " + file.name;
+      return;
     }catch(e){
-      if(e && e.name !== "AbortError") msg.textContent = "Sharing did not work. Use Save backup file instead.";
+      if(e && e.name === "AbortError") return;      // I closed the share menu
     }
-  }else{
-    saveBackup();
   }
+  // 2) the phone cannot share files: show the backup text to copy into an email
+  showBackupText(file);
+}
+
+/**
+ * Fallback: show the backup text with a Copy button, so I can paste it into
+ * an email to myself. Pasting this text into a .txt file restores it.
+ */
+async function showBackupText(file){
+  const text = await file.text();
+  const box = document.getElementById("backupMsg");
+  box.innerHTML = `This phone cannot send the file directly. Tap <b>Copy</b>, then paste it into an email to yourself
+    (subject: ${esc(file.name)}).<br>
+    <button class="btn solid" id="copyBackupBtn" style="margin:8px 0">Copy backup text</button>
+    <textarea readonly style="height:90px">${esc(text)}</textarea>`;
+  document.getElementById("copyBackupBtn").onclick = () => {
+    const ta = box.querySelector("textarea");
+    const done = () => { markBackedUp(); document.getElementById("copyBackupBtn").textContent = "Copied ✓ Now paste it in an email"; };
+    try{
+      navigator.clipboard.writeText(text).then(done, () => { ta.select(); document.execCommand("copy"); done(); });
+    }catch(e){ ta.select(); document.execCommand("copy"); done(); }
+  };
 }
 
 /** Restore days from a backup file. Days in the file replace the same dates on the phone. */
