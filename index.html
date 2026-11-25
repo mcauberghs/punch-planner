@@ -2,7 +2,7 @@
 <!--
   ============================================================================
   Punch Planner
-  Version : 1.5.0 (2026-11-14)
+  Version : 1.6.0 (2026-11-24)
   Author  : Mickael Cauberghs
   ----------------------------------------------------------------------------
   Purpose
@@ -69,6 +69,14 @@
                        minute to punch out); short-lunch warning (under 30
                        min); "Pay period" search buttons (2 weeks); "Import
                        from ADP" (paste the timecard, fills missing punches).
+    1.6.0  2026-11-24  Mickael Cauberghs  Day types: paid holiday, vacation,
+                       sick and unpaid time off, with hours instead of punches.
+                       Week target and "Goal today", including "week total by
+                       the end of today, at least" (what I did on Tue 11/24:
+                       leave as early as possible without dropping below 16.00
+                       for the week). Overtime counted on WORKED hours only,
+                       above 40.00, as the IPG handbook requires; paid leave is
+                       shown separately and never counts toward overtime.
   ============================================================================
 -->
 <html lang="en">
@@ -196,6 +204,17 @@
   .confirm-box p{margin:0 0 16px;color:var(--muted)}
   .confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .confirm-actions .btn{height:48px;border-radius:12px;font-size:16px;font-weight:700}
+  /* v1.6.0 - goal row and day types */
+  .goalrow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  .goalrow b{font-size:19px}
+  .goalrow .btn{height:40px;padding:0 14px;border-radius:10px}
+  .modal select{width:100%;height:46px;font-size:17px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+  .modal .choice{display:flex;align-items:center;gap:10px;margin:10px 0}
+  .modal .choice input[type=radio]{width:22px;height:22px;flex:none}
+  .modal .choice label{flex:1}
+  .modal .choice input[type=text]{width:90px;height:42px;text-align:center;font-size:17px}
+  .tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--amber-bg);color:var(--amber);margin-left:6px}
+  .tag.off{background:var(--line);color:var(--muted)}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:14px;
     background:#1d2330;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.3);width:max-content;max-width:92vw}
   .toast button{background:none;border:0;color:#7fb0ff;font-weight:800;font-size:16px;cursor:pointer;padding:4px 6px}
@@ -250,6 +269,7 @@
         To change another day, use <b>History → Add or edit any day</b>.
       </div>
       <div class="steps" id="steps"></div>
+      <p class="note" style="margin:10px 0 0">Not a working day? <button class="linkbtn" id="typeTodayBtn">Set the day type</button> (holiday, vacation, sick, unpaid).</p>
     </div>
 
     <div class="card">
@@ -265,17 +285,25 @@
         <b>Real</b> = the time you really worked. <b>Card</b> = what the timecard counts.<br>
         Daily goal: 8:00 real work and 8.00 card hours. Only punch early if your company allows it.
       </div>
+      <div class="goalrow">
+        <div>Goal today: <b id="goalVal">—</b><br><small class="note" id="goalWhy"></small></div>
+        <button class="btn" id="goalBtn">Change</button>
+      </div>
       <div class="stats" id="todayStats"></div>
     </div>
 
     <div class="card">
       <h2>This week (Mon–Sun) <button class="info" data-info="iWeek" aria-label="About the 40-hour plan">i</button></h2>
       <div id="iWeek" class="infobox hidden">
-        The plan line shows how many <b>card hours</b> are left to reach <b>40.00</b> this week, and how many
-        that is per workday (Monday to Friday). Above 40.00 the extra time may be overtime, so check with your manager.
+        The plan line shows how many <b>card hours</b> are left to reach your week target, and how many
+        that is per workday (Monday to Friday). Change the target with <b>Goal today → Change</b>.<br>
+        <b>Worked</b> is time you actually worked. <b>Paid leave</b> is holiday, vacation or sick hours.
+        Overtime is counted on worked hours only, above 40.00: paid leave does not count toward it
+        (IPG handbook, Overtime Policy). Unpaid time off is recorded but not paid.
       </div>
       <div class="stats" id="weekStats"></div>
-      <div id="weekPlan" class="note" style="margin-top:10px"></div>
+      <div id="weekLeave" class="note" style="margin-top:10px"></div>
+      <div id="weekPlan" class="note" style="margin-top:6px"></div>
       <div id="weekWarn"></div>
     </div>
   </section>
@@ -372,7 +400,7 @@
 <script>
 /*
  * Punch Planner - application script
- * Version 1.5.0 (2026-11-14) - Mickael Cauberghs
+ * Version 1.6.0 (2026-11-24) - Mickael Cauberghs
  *
  * All times are stored as "HH:MM" strings (24-hour, local time) and computed
  * as minutes since midnight. Each day is one record:
@@ -389,8 +417,8 @@
 // said anything about overtime, so above 40 card hours the app only WARNS me
 // (decision 2026-11-07) instead of blocking me.
 // ---------------------------------------------------------------------------
-const APP_VERSION = "1.5.0";
-const APP_DATE = "2026-11-14";
+const APP_VERSION = "1.6.0";
+const APP_DATE = "2026-11-24";
 const TARGET = 480;       // real work per day, in minutes (8:00)
 const LUNCH = 30;         // minimum real lunch, in minutes
 const WEEK_LIMIT = 2400;  // 40:00 card hours per week, in minutes
@@ -405,6 +433,20 @@ const SNOOZES = [5, 10, 15, 20];
 // start on a Monday. PAY_ANCHOR is the first day of one pay period.
 const PAY_ANCHOR = "2026-11-02";
 const PAY_DAYS = 14;
+// Mickael Cauberghs, 2026-11-24 (v1.6.0): day types and the weekly goal.
+// The IPG handbook (Overtime Policy, item 5) says hours paid but not worked
+// (sick, vacation, holidays not worked) are NOT counted for overtime, and the
+// workweek is Monday to Sunday. So the app counts overtime on WORKED hours
+// only, and shows paid leave separately.
+const WEEKS_KEY = "punchPlanner.weeks.v1";   // per-week target and goal
+const DAY_HOURS = "8.00";                    // a full day of paid leave
+const TYPES = {
+  work:     { label: "Worked day",  short: "",          paid: false },
+  holiday:  { label: "Paid holiday", short: "Holiday",  paid: true },
+  vacation: { label: "Vacation (paid)", short: "Vacation", paid: true },
+  sick:     { label: "Sick (paid)", short: "Sick",      paid: true },
+  unpaid:   { label: "Unpaid time off", short: "Unpaid", paid: false }
+};
 const FIELDS = ["in1", "out1", "in2", "out2"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -451,6 +493,30 @@ function calc(rec){
   const lunch = (b!=null && c!=null) ? c-b : null;
   return {real, card, diff: card-real, lunch};
 }
+/** Hours as text ("8.25", "8,25") to minutes, or null when empty or wrong. */
+function hoursToMin(v){
+  if(v == null) return null;
+  const t = String(v).trim().replace(",", ".");
+  if(!t || !/^\d{1,2}(\.\d{1,2})?$/.test(t)) return null;
+  return Math.round(parseFloat(t) * 60);
+}
+
+/** The day's type, "work" when nothing is set. */
+function dayType(rec){ return (rec && rec.type && TYPES[rec.type]) ? rec.type : "work"; }
+
+/** Paid-leave minutes of a day (holiday, vacation, sick). 0 for a worked day. */
+function leaveMin(rec){
+  const t = dayType(rec);
+  if(!TYPES[t].paid) return 0;
+  return hoursToMin(rec.leave) || 0;
+}
+
+/** Unpaid time-off minutes (recorded, not paid). */
+function unpaidMin(rec){
+  if(dayType(rec) !== "unpaid") return 0;
+  return hoursToMin(rec.leave) || 0;
+}
+
 /** True when the punch times of a day are not in increasing order. */
 function orderProblem(rec){
   let last = -1;
@@ -659,6 +725,96 @@ function restoreBackup(file){
 function todayRec(){ const k = todayKey(); return days[k] ? Object.assign({}, days[k]) : {date:k, in1:"", out1:"", in2:"", out2:"", note:""}; }
 function nextField(rec){ return FIELDS.find(f => !rec[f]) || null; }
 
+/** Per-week settings: target hours and how today's goal is worked out. */
+function weekSettings(mon){
+  let all = {};
+  try{ all = JSON.parse(localStorage.getItem(WEEKS_KEY) || "{}") || {}; }catch(e){ all = {}; }
+  const w = all[mon] || {};
+  return { target: w.target || "40.00", goalMode: w.goalMode || "auto", goalValue: w.goalValue || "" };
+}
+function saveWeekSettings(mon, w){
+  let all = {};
+  try{ all = JSON.parse(localStorage.getItem(WEEKS_KEY) || "{}") || {}; }catch(e){ all = {}; }
+  all[mon] = w;
+  try{ localStorage.setItem(WEEKS_KEY, JSON.stringify(all)); }catch(e){}
+}
+
+/**
+ * Everything about one week (Monday to Sunday).
+ * worked/real: time actually worked. leave: paid holiday, vacation, sick.
+ * paid: worked + leave. ot: worked hours above 40 (leave never counts).
+ */
+function weekSummary(k){
+  const mon = mondayOf(k);
+  let worked = 0, real = 0, leave = 0, unpaid = 0, leaveDays = 0;
+  for(let i = 0; i < 7; i++){
+    const rec = days[addDays(mon, i)];
+    if(!rec) continue;
+    const c = calc(rec);
+    worked += c.card; real += c.real;
+    const lv = leaveMin(rec);
+    if(lv){ leave += lv; leaveDays++; }
+    unpaid += unpaidMin(rec);
+  }
+  return { mon, worked, real, leave, unpaid, leaveDays, paid: worked + leave, ot: Math.max(0, worked - WEEK_LIMIT) };
+}
+
+/** True when the day is finished (has an end-of-day punch) or is a leave day. */
+function dayDone(k){
+  const rec = days[k];
+  return !!(rec && (rec.out2 || dayType(rec) !== "work"));
+}
+
+/**
+ * Mickael Cauberghs, 2026-11-24 (v1.6.0): how many card hours I should put in
+ * today. Three ways:
+ *   auto       - spread what is left of the week target over the workdays left
+ *   hours      - the number I typed for today
+ *   weektotal  - "by the end of today the week must reach N hours"
+ *                (this is what I did on Tue 11/24: leave as early as possible
+ *                 but not below 16.00 for the week)
+ * @returns {{min:number, why:string, mode:string}}
+ */
+function goalToday(k){
+  const mon = mondayOf(k), ws = weekSettings(mon);
+  const q = m => Math.max(0, m);
+  if(ws.goalMode === "hours"){
+    const m = hoursToMin(ws.goalValue);
+    if(m != null) return { min: q(Math.round(m / 15) * 15), why: "you set today's goal", mode: "hours" };
+  }
+  if(ws.goalMode === "weektotal"){
+    const want = hoursToMin(ws.goalValue);
+    if(want != null){
+      let before = 0;
+      for(let i = 0; i < 7; i++){
+        const d = addDays(mon, i);
+        if(d >= k) continue;
+        if(days[d]) before += calc(days[d]).card + leaveMin(days[d]);
+      }
+      return { min: q(Math.ceil((want - before) / 15) * 15),
+               why: "week must reach " + fmtHrs(want) + " by the end of today", mode: "weektotal" };
+    }
+  }
+  // auto: what is left of the target, shared between the workdays that remain
+  const target = hoursToMin(ws.target) || WEEK_LIMIT;
+  let other = 0, left = 0;
+  for(let i = 0; i < 7; i++){
+    const d = addDays(mon, i);
+    if(d === k) continue;
+    if(days[d]) other += calc(days[d]).card + leaveMin(days[d]);
+  }
+  for(let i = 0; i < 5; i++){                   // Monday to Friday
+    const d = addDays(mon, i);
+    if(d < k) continue;
+    if(d !== k && (dayDone(d) || dayType(days[d] || {}) !== "work")) continue;
+    if(d === k && dayType(days[d] || {}) !== "work") continue;
+    left++;
+  }
+  if(left < 1) left = 1;
+  return { min: q(Math.floor((target - other) / left / 15) * 15),
+           why: "to reach " + fmtHrs(target) + " this week", mode: "auto" };
+}
+
 function weekOtherCard(k){
   const mon = mondayOf(k); let sum = 0;
   for(let i=0;i<7;i++){ const d = addDays(mon,i); if(d===k) continue; if(days[d]) sum += calc(days[d]).card; }
@@ -676,7 +832,7 @@ function workdaysLeft(k){
   let n = 0;
   for(let i = 0; i < 5; i++){
     const d = addDays(mon, i);
-    if(d >= k && !(days[d] && days[d].out2)) n++;
+    if(d >= k && !dayDone(d)) n++;
   }
   return n;
 }
@@ -688,16 +844,16 @@ function workdaysLeft(k){
  * exactly 40.00 and how many that is per workday.
  */
 function weekPlanHtml(k){
-  const mon = mondayOf(k);
+  const mon = mondayOf(k), target = hoursToMin(weekSettings(mon).target) || WEEK_LIMIT;
   let done = 0;
   for(let i = 0; i < 7; i++){
     const r = days[addDays(mon, i)];
-    if(r && r.out2) done += calc(r).card;      // finished days only
+    if(r) done += calc(r).card + leaveMin(r);  // worked so far + holiday, vacation, sick
   }
-  const left = WEEK_LIMIT - done, n = workdaysLeft(k);
+  const left = target - done, n = workdaysLeft(k);
   if(left <= 0 || n === 0) return "";
-  return `To reach <b>40.00</b> this week: <b>${fmtHrs(left)}</b> card hours in <b>${n}</b> workday${n > 1 ? "s" : ""}` +
-    (n > 1 ? ` (about <b>${fmtHrs(left / n)}</b> per day).` : ` (today).`);
+  return `To reach <b>${fmtHrs(target)}</b> this week: <b>${fmtHrs(left)}</b> hours still to record in <b>${n}</b> workday${n > 1 ? "s" : ""}` +
+    (n > 1 ? ` (about <b>${fmtHrs(Math.floor(left / n / 15) * 15)}</b> per day).` : ` (today).`);
 }
 
 function renderAdvice(){
@@ -774,10 +930,15 @@ function renderAdvice(){
   else if(nf === "out2"){
     // best = later of: (a) real work reaches 8:00, (b) first minute whose
     // rounded punch gives 8.00 card hours (rounded >= rNeed  <=>  t >= rNeed - 7).
+    // Mickael Cauberghs, 2026-11-24 (v1.6.0): the end-of-day time now follows
+    // today's goal, which can be less than 8.00 (a short week, a half day).
+    // The "real 8:00" floor only applies on a normal 8.00 day.
+    const goal = goalToday(rec.date), goalMin = goal.min;
+    const realFloor = (goalMin === TARGET) ? TARGET : 0;
     const morningReal = b - a, cardMorning = rnd(b) - rnd(a);
-    const endReal = c + (TARGET - morningReal);
-    const rNeed = rnd(c) + (TARGET - cardMorning);
-    const best = Math.max(endReal, rNeed - 7);
+    const endReal = c + (realFloor - morningReal);
+    const rNeed = rnd(c) + (goalMin - cardMorning);
+    const best = Math.max(endReal, rNeed - 7, c + 1);
     const q = rnd(best), lastGood = q + 7;
     const realAt = morningReal + (best - c), cardAt = cardMorning + (q - rnd(c));
     // Mickael Cauberghs, 2026-11-07 (v1.3.1): the box is RED (white letters)
@@ -793,6 +954,7 @@ function renderAdvice(){
       html = `<div class="label">Punch out at${colorInfo}</div><div class="big">${fmtClock(best)}</div>
         <div class="sub">In <span class="countdown">${fmtDur(best-now)}</span>. Good window: <b>${fmtClock(best)} – ${fmtClock(lastGood)}</b> (counts as ${fmtClock(q)}).</div>
         <ul><li>Real work: <b>${fmtDur(realAt)}</b> · Card: <b>${fmtHrs(cardAt)}</b></li>
+        <li>Goal today: <b>${fmtHrs(goalMin)}</b> (${esc(goal.why)}).</li>
         <li>Do not punch before ${fmtClock(best)}.</li></ul>`;
     } else if(now <= lastGood){
       const realNow = morningReal + (now - c), cardNow = cardMorning + (rnd(now) - rnd(c));
@@ -999,15 +1161,24 @@ function renderTodayStats(){
     stat(fmtHrs(card), "Card hours" + (open?" (if you punch now)":"")) +
     stat(fmtDiff(card-real), "Card vs real", card-real>=0?"pos":"neg");
 
-  const w = weekTotals(rec.date);
-  // replace today's stored calc with live numbers
+  // today's goal
+  const goal = goalToday(rec.date);
+  document.getElementById("goalVal").textContent = dayType(rec) === "work" ? fmtHrs(goal.min) : TYPES[dayType(rec)].label;
+  document.getElementById("goalWhy").textContent = dayType(rec) === "work" ? goal.why : "no punches needed";
+
+  const w = weekSummary(rec.date);
+  // replace today's stored numbers with the live ones
   const stored = days[rec.date] ? calc(days[rec.date]) : {real:0, card:0};
-  const wr = w.real - stored.real + real, wc = w.card - stored.card + card;
+  const wr = w.real - stored.real + real, wc = w.worked - stored.card + card;
   document.getElementById("weekStats").innerHTML =
-    stat(fmtDur(wr), "Real work") + stat(fmtHrs(wc), "Card hours") + stat(fmtDiff(wc-wr), "Card vs real", wc-wr>=0?"pos":"neg");
+    stat(fmtDur(wr), "Real work") + stat(fmtHrs(wc), "Worked (card)") + stat(fmtDiff(wc-wr), "Card vs real", wc-wr>=0?"pos":"neg");
+  document.getElementById("weekLeave").innerHTML = (w.leave || w.unpaid)
+    ? `Paid leave: <b>${fmtHrs(w.leave)}</b> (${w.leaveDays} day${w.leaveDays === 1 ? "" : "s"}) · Total paid this week: <b>${fmtHrs(wc + w.leave)}</b>`
+      + (w.unpaid ? ` · Unpaid: ${fmtHrs(w.unpaid)}` : "") : "";
   document.getElementById("weekPlan").innerHTML = weekPlanHtml(rec.date);
-  document.getElementById("weekWarn").innerHTML = wc > WEEK_LIMIT
-    ? `<div class="warn"><b>Over 40 card hours this week</b> (${fmtHrs(wc)}). The extra time may be paid as overtime — check with your manager.</div>` : "";
+  const ot = Math.max(0, wc - WEEK_LIMIT);
+  document.getElementById("weekWarn").innerHTML = ot
+    ? `<div class="warn"><b>${fmtHrs(ot)} hours over 40 worked this week.</b> Overtime must be approved by your manager before you work it (IPG handbook).</div>` : "";
 }
 
 function punchNow(){
@@ -1322,21 +1493,24 @@ function renderHistory(){
   document.getElementById("histTitle").textContent =
     (!from && !to) ? "All days" : (from===to ? prettyDate(from) : (from?prettyDate(from):"…") + " → " + (to?prettyDate(to):"…"));
 
-  let R=0, C=0, A=0, n=0, aDays=0, bad=0;
-  let body = "", curWeek = null, wR=0, wC=0, wA=0;
+  let R=0, C=0, A=0, L=0, n=0, aDays=0, bad=0;
+  let body = "", curWeek = null, wR=0, wC=0, wA=0, wL=0;
   const span = recon ? 1 : 5;
   const flushWeek = () => {
     if(curWeek === null) return;
     body += recon
       ? `<tr class="weekrow"><td>Week ${shortDate(curWeek).slice(4)}</td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtHrs(wA)}</td><td></td></tr>`
-      : `<tr class="weekrow"><td>Week of ${prettyDate(curWeek).slice(4)}</td><td colspan="${span}"></td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtDiff(wC-wR)}</td></tr>`;
+      : `<tr class="weekrow"><td>Week of ${prettyDate(curWeek).slice(4)}${wL ? ` + ${fmtHrs(wL)} leave = ${fmtHrs(wC + wL)} paid` : ""}</td><td colspan="${span}"></td><td>${fmtDur(wR)}</td><td>${fmtHrs(wC)}</td><td>${fmtDiff(wC-wR)}</td></tr>`;
   };
   for(const k of keys){
     const rec = days[k], c = calc(rec);
     const wk = mondayOf(k);
-    if(wk !== curWeek){ flushWeek(); curWeek = wk; wR = 0; wC = 0; wA = 0; }
+    if(wk !== curWeek){ flushWeek(); curWeek = wk; wR = 0; wC = 0; wA = 0; wL = 0; }
     wR += c.real; wC += c.card; R += c.real; C += c.card; if(c.real>0) n++;
-    const label = recon ? shortDate(k) : `${prettyDate(k)}${rec.note ? " 📝" : ""}`;
+    const ty = dayType(rec), lv = leaveMin(rec), up = unpaidMin(rec);
+    wL += lv; L += lv;
+    const badge = ty === "work" ? "" : `<span class="tag${TYPES[ty].paid ? "" : " off"}">${TYPES[ty].short} ${fmtHrs(lv || up)}</span>`;
+    const label = (recon ? shortDate(k) : `${prettyDate(k)}${rec.note ? " 📝" : ""}`) + badge;
     if(recon){
       const a = adpMinutes(rec);
       let check = `<span class="note">?</span>`;
@@ -1369,7 +1543,8 @@ function renderHistory(){
 
   document.getElementById("rangeStats").innerHTML = recon
     ? stat(fmtHrs(C), "Card (app)") + stat(aDays ? fmtHrs(A) : "—", "ADP") + stat(aDays ? (bad ? bad + " ✗" : "All ✓") : "—", bad ? "Days different" : "Matches ADP", bad ? "neg" : "pos")
-    : stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
+    : L ? stat(fmtHrs(C), "Worked (card)") + stat(fmtHrs(L), "Paid leave") + stat(fmtHrs(C + L), "Total paid")
+        : stat(fmtDur(R),"Real work") + stat(fmtHrs(C),"Card hours") + stat(fmtDiff(C-R),"Card vs real", C-R>=0?"pos":"neg");
 
   document.querySelectorAll("#histTable tbody tr[data-k]").forEach(tr => tr.addEventListener("click", ev => {
     if(ev.target.closest("input")) return;
@@ -1382,15 +1557,76 @@ function renderHistory(){
   }));
 }
 
+/**
+ * Mickael Cauberghs, 2026-11-24 (v1.6.0): set the week target and how today's
+ * goal is worked out. "Week total by end of today" is the case from Tue 11/24:
+ * I wanted to leave as early as possible but keep the week at 16.00 or more.
+ */
+function openGoalDialog(){
+  const mon = mondayOf(todayKey()), ws = weekSettings(mon);
+  const host = document.getElementById("modalHost");
+  const sel = m => ws.goalMode === m ? "checked" : "";
+  host.innerHTML = `<div class="modal-bg"><div class="modal">
+    <h3>Goal for today</h3>
+    <div class="field"><label for="g_target">Week target (card hours)</label>
+      <input type="text" inputmode="decimal" id="g_target" value="${esc(ws.target)}" placeholder="40.00"></div>
+    <p class="note" style="margin:0 0 6px">Week of ${prettyDate(mon).slice(4)}. How should today's goal be worked out?</p>
+    <div class="choice"><input type="radio" name="gm" id="g_auto" value="auto" ${sel("auto")}>
+      <label for="g_auto">Spread what is left of the target over the workdays left</label></div>
+    <div class="choice"><input type="radio" name="gm" id="g_hours" value="hours" ${sel("hours")}>
+      <label for="g_hours">Hours today</label>
+      <input type="text" inputmode="decimal" id="g_hoursVal" value="${esc(ws.goalMode === "hours" ? ws.goalValue : "")}" placeholder="8.00"></div>
+    <div class="choice"><input type="radio" name="gm" id="g_week" value="weektotal" ${sel("weektotal")}>
+      <label for="g_week">Week total by the end of today, at least</label>
+      <input type="text" inputmode="decimal" id="g_weekVal" value="${esc(ws.goalMode === "weektotal" ? ws.goalValue : "")}" placeholder="16.00"></div>
+    <div id="g_preview" class="note" style="margin-top:10px"></div>
+    <div class="actions">
+      <button class="btn solid save" id="g_save">Save</button>
+      <button class="btn danger" id="g_reset">Back to normal</button>
+      <button class="btn" id="g_cancel">Cancel</button>
+    </div>
+  </div></div>`;
+  const read = () => {
+    const mode = (host.querySelector("input[name=gm]:checked") || {}).value || "auto";
+    return { target: document.getElementById("g_target").value.trim() || "40.00", goalMode: mode,
+             goalValue: mode === "hours" ? document.getElementById("g_hoursVal").value.trim()
+                      : mode === "weektotal" ? document.getElementById("g_weekVal").value.trim() : "" };
+  };
+  const preview = () => {
+    const w = read();
+    saveWeekSettings(mon, w);                       // try it, then show the result
+    const g = goalToday(todayKey());
+    document.getElementById("g_preview").innerHTML =
+      `Today's goal would be <b>${fmtHrs(g.min)}</b> card hours (${esc(g.why)}).`;
+  };
+  const before = Object.assign({}, ws);
+  host.querySelectorAll("input").forEach(i => {
+    i.addEventListener("input", preview);
+    i.addEventListener("change", preview);
+  });
+  ["g_hoursVal", "g_weekVal"].forEach(id => document.getElementById(id).addEventListener("focus", () => {
+    document.getElementById(id === "g_hoursVal" ? "g_hours" : "g_week").checked = true; preview();
+  }));
+  preview();
+  const close = () => { host.innerHTML = ""; renderAll(); };
+  document.getElementById("g_cancel").onclick = () => { saveWeekSettings(mon, before); close(); };
+  document.getElementById("g_save").onclick = () => { saveWeekSettings(mon, read()); close(); };
+  document.getElementById("g_reset").onclick = () => { saveWeekSettings(mon, { target: "40.00", goalMode: "auto", goalValue: "" }); close(); };
+}
+
 function openEditor(k){
   const isNew = !k;
-  const rec = k && days[k] ? Object.assign({}, days[k]) : {date: k || todayKey(), in1:"", out1:"", in2:"", out2:"", note:"", adp:""};
+  const rec = k && days[k] ? Object.assign({}, days[k]) : {date: k || todayKey(), in1:"", out1:"", in2:"", out2:"", note:"", adp:"", type:"work", leave:""};
   const host = document.getElementById("modalHost");
   const names = {in1:["Punch IN","start of day"], out1:["Punch OUT","lunch"], in2:["Punch IN","after lunch"], out2:["Punch OUT","end of day"]};
   const timeRows = recIn => FIELDS.map(f => timeFieldHtml("e_" + f, names[f][0], names[f][1], recIn[f])).join("");
   host.innerHTML = `<div class="modal-bg"><div class="modal">
     <h3>${isNew ? "Add or edit any day" : prettyDate(rec.date)}</h3>
     <div class="field"><label for="e_date">Date</label><input type="date" id="e_date" value="${esc(rec.date)}"></div>
+    <div class="field"><label for="e_type">Day type</label>
+      <select id="e_type">${Object.keys(TYPES).map(t => `<option value="${t}" ${dayType(rec) === t ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></div>
+    <div class="field hidden" id="e_leaveField"><label for="e_leave">Hours for that day</label>
+      <input type="text" inputmode="decimal" id="e_leave" value="${esc(rec.leave || "")}" placeholder="${DAY_HOURS}"></div>
     <div id="e_times">${timeRows(rec)}</div>
     <div class="field"><label for="e_adp">ADP daily total (hours)</label>
       <input type="text" inputmode="decimal" id="e_adp" value="${esc(rec.adp == null ? "" : rec.adp)}" placeholder="e.g. 8.00"></div>
@@ -1405,11 +1641,25 @@ function openEditor(k){
     date: document.getElementById("e_date").value,
     in1: val("in1"), out1: val("out1"), in2: val("in2"), out2: val("out2"),
     note: document.getElementById("e_note").value.trim(),
-    adp: document.getElementById("e_adp").value.trim()
+    adp: document.getElementById("e_adp").value.trim(),
+    type: document.getElementById("e_type").value,
+    leave: document.getElementById("e_leave").value.trim()
   });
+  // show the hours field only for a day that is not a normal worked day
+  const syncType = () => {
+    const t = document.getElementById("e_type").value;
+    document.getElementById("e_leaveField").classList.toggle("hidden", t === "work");
+    const inp = document.getElementById("e_leave");
+    if(t !== "work" && !inp.value) inp.value = DAY_HOURS;
+    if(t === "work") inp.value = "";
+  };
   const preview = () => {
     const r2 = read(), c = calc(r2);
     let t = `Real: <b>${fmtDur(c.real)}</b> · Card: <b>${fmtHrs(c.card)}</b> · Card vs real: <b>${fmtDiff(c.diff)}</b>`;
+    const lv = leaveMin(r2), up = unpaidMin(r2);
+    if(lv) t += `<br>${TYPES[dayType(r2)].short}: <b>${fmtHrs(lv)}</b> paid (not counted for overtime) · Paid that day: <b>${fmtHrs(c.card + lv)}</b>`;
+    if(up) t += `<br>Unpaid time off: <b>${fmtHrs(up)}</b> (not paid)`;
+    if(dayType(r2) !== "work" && r2.leave && hoursToMin(r2.leave) == null) t += `<br><span class="neg">Type hours like 8.00.</span>`;
     const a = adpMinutes(r2);
     if(a != null) t += a === c.card ? `<br>ADP: <span class="ok">✓ matches</span>` : `<br>ADP: <span class="bad">✗ ${fmtDiff(a - c.card)} vs card</span>`;
     if(orderProblem(r2)) t += `<br><span class="neg">Times are not in order.</span>`;
@@ -1426,12 +1676,17 @@ function openEditor(k){
       initTimeFields(document.getElementById("e_times"), preview);
       document.getElementById("e_note").value = src.note || "";
       document.getElementById("e_adp").value = src.adp || "";
+      document.getElementById("e_type").value = dayType(src);
+      document.getElementById("e_leave").value = src.leave || "";
+      syncType();
       preview();
       drawActions();
     });
   }
   initTimeFields(document.getElementById("e_times"), preview);
-  ["e_adp", "e_note"].forEach(id => document.getElementById(id).addEventListener("input", preview));
+  ["e_adp", "e_note", "e_leave"].forEach(id => document.getElementById(id).addEventListener("input", preview));
+  document.getElementById("e_type").addEventListener("change", () => { syncType(); preview(); });
+  syncType();
   preview();
   const close = () => { host.innerHTML = ""; };
 
@@ -1447,7 +1702,7 @@ function openEditor(k){
     const r2 = read();
     if(!/^\d{4}-\d\d-\d\d$/.test(r2.date)) return;
     if(!isNew && r2.date !== rec.date) removeDay(rec.date);
-    if(FIELDS.every(f => !r2[f]) && !r2.note && !r2.adp){ if(days[r2.date]) removeDay(r2.date); }
+    if(FIELDS.every(f => !r2[f]) && !r2.note && !r2.adp && dayType(r2) === "work"){ if(days[r2.date]) removeDay(r2.date); }
     else setDay(r2);
     close();
   };
@@ -1655,10 +1910,11 @@ function applyImport(plan){
 
 function copyTable(){
   const keys = rangeKeys();
-  const lines = [["Date","In","Out (lunch)","In (lunch)","Out","Lunch min","Real h:mm","Card hrs","Card vs real min","ADP hrs","Note"].join("\t")];
+  const lines = [["Date","Type","Leave hrs","In","Out (lunch)","In (lunch)","Out","Lunch min","Real h:mm","Card hrs","Card vs real min","ADP hrs","Note"].join("\t")];
   for(const k of keys){
     const r = days[k], c = calc(r);
-    lines.push([k, r.in1, r.out1, r.in2, r.out2, c.lunch==null?"":c.lunch, fmtDur(c.real), fmtHrs(c.card), c.diff, r.adp || "", (r.note||"").replace(/\s+/g," ")].join("\t"));
+    const ty = dayType(r), lvm = leaveMin(r) || unpaidMin(r);
+    lines.push([k, TYPES[ty].short, lvm ? fmtHrs(lvm) : "", r.in1, r.out1, r.in2, r.out2, c.lunch==null?"":c.lunch, fmtDur(c.real), fmtHrs(c.card), c.diff, r.adp || "", (r.note||"").replace(/\s+/g," ")].join("\t"));
   }
   const text = lines.join("\n");
   const box = document.getElementById("copyBox");
@@ -1692,6 +1948,8 @@ document.getElementById("tabHistory").onclick = () => showTab("history");
 document.getElementById("mainBtn").onclick = punchNow;
 document.getElementById("undoBtn").onclick = undo;
 document.getElementById("addDayBtn").onclick = () => openEditor(null);
+document.getElementById("goalBtn").onclick = openGoalDialog;
+document.getElementById("typeTodayBtn").onclick = () => openEditor(todayKey());
 document.getElementById("copyBtn").onclick = copyTable;
 document.getElementById("importCheckBtn").onclick = checkImport;
 document.getElementById("backupBtn").onclick = saveBackup;
