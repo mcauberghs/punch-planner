@@ -1,6 +1,6 @@
 # Punch Planner
 
-**Version 1.5.0 (2026-11-14)** · Author: Mickael Cauberghs
+**Version 1.6.0 (2026-11-24)** · Author: Mickael Cauberghs
 
 A small Android app (installable web app) that tells me the best time to punch
 in and out on the ADP timecard, so I work a real 8:00 per day, take a real
@@ -24,6 +24,9 @@ in and out on the ADP timecard, so I work a real 8:00 per day, take a real
 - Edit a day, add notes, copy a period for Excel
 - Check vs ADP: type ADP's daily total, see ✓ or ✗ per day
 - Import from ADP: paste the timecard, the app fills only the missing punches
+- Day types: paid holiday, vacation, sick, unpaid time off (hours instead of punches)
+- Week target and "Goal today": spread the target, set hours for today, or "week total by the end of today, at least"
+- Overtime counted on worked hours only, above 40.00 (IPG handbook); paid leave shown separately
 - Weekly 40-hour plan and "staying late" advice; short-lunch warning; pay period search
 - Lunch alarms: gentle chime with snooze 5/10/15/20 min (new best time shown), urgent red alarm at 55 min, stop for the day
 - (i) buttons show details only when needed
@@ -67,3 +70,4 @@ with internet: it finds the new version and reloads itself once.
 | 1.4.5   | 2026-11-08 | Mickael Cauberghs  | Check vs ADP table fits on the phone; "Matches ADP" label |
 | 1.4.6   | 2026-11-13 | Mickael Cauberghs  | Send backup works on Android (.txt file); Copy fallback; restore reads .txt and .json |
 | 1.5.0   | 2026-11-14 | Mickael Cauberghs  | Weekly 40-hour plan, staying-late advice, short-lunch warning, pay period search, import from ADP |
+| 1.6.0   | 2026-11-24 | Mickael Cauberghs  | Day types (holiday, vacation, sick, unpaid), week target and "Goal today", overtime on worked hours only |
